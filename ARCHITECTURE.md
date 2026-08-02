@@ -383,21 +383,6 @@ flowchart TD
 
 Communication with the host PC is handled by USART1. The configuration is **115200 baud, 8 data bits, no parity, 1 stop bit (8N1)**.
 
-### Software Parameter-Order Swap Alert
-
-> [!WARNING]
-> **Microcontroller Parameter Inversion:**
-> In `main.c` line 147, the shell initialization function is called with the following arguments:
-> `Shell_Init(&huart1, &adas, &ev, &flt);`
-> However, the function definition in `uart_shell.c` expects:
-> `Shell_Init(UART_HandleTypeDef *huart, EV_HandleTypeDef *ev, ADAS_HandleTypeDef *adas, Fault_HandleTypeDef *flt)`
-> This results in the pointer to the ADAS handle being assigned to the EV handle variable, and vice versa. 
-> 
-> *Impact*: Standard diagnostics function, but direct runtime memory accesses across swapped variables can cause hard fault exceptions.
-> 
-> *Fix*: Modify the call in `main.c` to:
-> `Shell_Init(&huart1, &ev, &adas, &flt);`
-
 ### CLI Interactive Sequence
 
 ```mermaid
