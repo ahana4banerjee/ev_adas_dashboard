@@ -4,7 +4,6 @@
 [![Framework: STM32 HAL](https://img.shields.io/badge/Framework-STM32_HAL-red.svg)](https://www.st.com/en/embedded-software/stm32cube-mcu-mpu-packages.html)
 [![Simulator: PICSimLab](https://img.shields.io/badge/Simulation-PICSimLab-green.svg)](https://lcgamboa.github.io/picsimlab/)
 [![UI: Matplotlib](https://img.shields.io/badge/UI-Matplotlib-orange.svg)](https://matplotlib.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](LICENSE)
 
 A complete hardware-in-the-loop (HIL) style simulation of an Electric Vehicle (EV) Dashboard integrated with Advanced Driver Assistance Systems (ADAS). The project features a modular STM32 firmware stack executing on an ARM Cortex-M3 (Blue Pill) that calculates vehicle dynamics, manages safety-critical ADAS alerts, monitors system faults, and streams real-time telemetry over UART to a custom Python GUI dashboard.
 
@@ -94,20 +93,20 @@ This project addresses this issue by providing a complete, localized development
 ```mermaid
 graph TD
     subgraph PICSimLab [PICSimLab Hardware Simulation]
-        POT_ACC[Potentiometer PA0: Accelerator]
-        POT_BRK[Potentiometer PA1: Brake]
-        POT_TMP[Potentiometer PA3: Motor Temp]
-        US_FRONT[HC-SR04 Front Sensor: PB0/PB1]
-        US_LEFT[HC-SR04 Left Sensor: PB2/PB3]
-        US_RIGHT[HC-SR04 Right Sensor: PB4/PB5]
-        LEDS[LED indicators: Collision, BSD L/R, Fault]
+        POT_ACC["Potentiometer PA0: Accelerator"]
+        POT_BRK["Potentiometer PA1: Brake"]
+        POT_TMP["Potentiometer PA3: Motor Temp"]
+        US_FRONT["HC-SR04 Front Sensor: PB0/PB1"]
+        US_LEFT["HC-SR04 Left Sensor: PB2/PB3"]
+        US_RIGHT["HC-SR04 Right Sensor: PB4/PB5"]
+        LEDS["LED indicators: Collision, BSD L/R, Fault"]
     end
 
     subgraph STM32F103C8 [STM32F103C8 Microcontroller]
         FW_ADC[ADC Driver]
         FW_US[Ultrasonic Driver]
-        FW_CORE[EV & ADAS Logic Engine]
-        FW_UART[UART ISR & Ring Buffer]
+        FW_CORE["EV & ADAS Logic Engine"]
+        FW_UART["UART ISR & Ring Buffer"]
     end
 
     subgraph HostPC [Host PC]
@@ -129,7 +128,7 @@ graph TD
     %% UART Bridging
     FW_CORE -->|TX Telemetry| FW_UART
     FW_UART -->|Shell Commands RX| FW_CORE
-    FW_UART ====>|Virtual Serial COM Port| PY_READER
+    FW_UART ===>|Virtual Serial COM Port| PY_READER
 
     %% Python Processing
     PY_READER -->|Regex Parsing| PY_STATE
@@ -145,9 +144,9 @@ graph TD
     subgraph Driver_Layer [Low-Level Drivers & HAL]
         HAL_Init[HAL Core]
         ADC_Poll[Regular ADC Channels]
-        TIM_Ticks[Timer Interrupts: TIM1 & TIM3]
-        TIM2_US[Microsecond Timer: TIM2]
-        UART_IT[UART Interrupt-driven RX/TX]
+        TIM_Ticks["Timer Interrupts: TIM1 & TIM3"]
+        TIM2_US["Microsecond Timer: TIM2"]
+        UART_IT["UART Interrupt-driven RX/TX"]
     end
 
     subgraph Middleware_Layer [System Scheduler & Drivers]
@@ -164,12 +163,12 @@ graph TD
     end
 
     %% Timing links
-    TIM_Ticks -->|10ms & 100ms flags| Sched
-    TIM2_US -->|us Delays & Rollovers| US_Driver
+    TIM_Ticks -->|10ms and 100ms flags| Sched
+    TIM2_US -->|us Delays and Rollovers| US_Driver
     
     %% Input flow
-    ADC_Poll -->|Read Accel/Brake/Temp| EV_Dyn
-    US_Driver -->|Read Front/Left/Right distances| ADAS_Eng
+    ADC_Poll -->|Read Accel, Brake and Temp| EV_Dyn
+    US_Driver -->|Read Front, Left and Right distances| ADAS_Eng
 
     %% Execution loops
     Sched -->|Executes 100Hz| EV_Dyn
@@ -178,9 +177,9 @@ graph TD
     Sched -->|Process Rx Ring Buffer| Shell_Cmd
     
     %% Interactions
-    EV_Dyn -->|Speed & Pedals| ADAS_Eng
-    EV_Dyn & ADAS_Eng -->|States & Alerts| Fault_Mgr
-    Fault_Mgr -->|Safe State Contactor & LEDs| EV_Dyn
+    EV_Dyn -->|Speed and Pedals| ADAS_Eng
+    EV_Dyn & ADAS_Eng -->|States and Alerts| Fault_Mgr
+    Fault_Mgr -->|Safe State Contactor and LEDs| EV_Dyn
     
     %% Diagnostics
     UART_IT -->|Rx Bytes| Shell_RB
@@ -196,28 +195,28 @@ graph TD
 
 ```mermaid
 graph TD
-    subgraph Data_Reception [I/O Thread]
-        Ser_Conn[Serial Port Connection]
-        Line_Reader[ASCII Line Reader]
-        Regex_Parser[Regex Extraction Engine]
+    subgraph Data_Reception ["I/O Thread"]
+        Ser_Conn["Serial Port Connection"]
+        Line_Reader["ASCII Line Reader"]
+        Regex_Parser["Regex Extraction Engine"]
     end
 
-    subgraph Data_Storage [Shared Context]
-        State_Dict[Shared State Dictionary]
-        Trend_Queue[Speed History Deque 60-elements]
+    subgraph Data_Storage ["Shared Context"]
+        State_Dict["Shared State Dictionary"]
+        Trend_Queue["Speed History Deque 60-elements"]
     end
 
-    subgraph Presentation_Layer [Main Thread UI]
-        Anim_Loop[Matplotlib FuncAnimation Loop]
-        Gauge_Spd[Speedometer Dial]
-        Gauge_Bat[Battery SOC Bar & Mode Info]
-        Trend_Chart[60-second Speed Graph]
-        Info_Panel[Text Metrics & Diagnostic Fault Flags]
-        ADAS_BEV[Birds-Eye Obstacle Visualizer]
+    subgraph Presentation_Layer ["Main Thread UI"]
+        Anim_Loop["Matplotlib FuncAnimation Loop"]
+        Gauge_Spd["Speedometer Dial"]
+        Gauge_Bat["Battery SOC Bar & Mode Info"]
+        Trend_Chart["60-second Speed Graph"]
+        Info_Panel["Text Metrics & Diagnostic Fault Flags"]
+        ADAS_BEV["Birds-Eye Obstacle Visualizer"]
     end
 
     Ser_Conn -->|Raw String lines| Line_Reader
-    Line_Reader -->|Parse SPD/SOC and F/L/R frames| Regex_Parser
+    Line_Reader -->|Parse SPD, SOC and F, L, R frames| Regex_Parser
     Regex_Parser -->|Write values| State_Dict
     Regex_Parser -->|Append speed| Trend_Queue
 
@@ -226,7 +225,7 @@ graph TD
     Anim_Loop -->|Draw bar| Gauge_Bat
     Anim_Loop -->|Plot line| Trend_Chart
     Anim_Loop -->|Print metrics| Info_Panel
-    Anim_Loop -->|Draw ego & obstacle box| ADAS_BEV
+    Anim_Loop -->|Draw ego and obstacle box| ADAS_BEV
 ```
 
 ---
@@ -235,22 +234,22 @@ graph TD
 
 ```mermaid
 graph LR
-    User[Driver Pedals] -->|PA0 / PA1 Potentiometers| STM32_ADC[STM32 ADC Channels]
-    STM32_ADC -->|Mapped Percentages| EV_Dynamics[EV Dynamics Update]
+    User["Driver Pedals"] -->|PA0 and PA1 Potentiometers| STM32_ADC["STM32 ADC Channels"]
+    STM32_ADC -->|Mapped Percentages| EV_Dynamics["EV Dynamics Update"]
     
-    Obstacles[Obstacles] -->|HC-SR04 Echoes PB1/3/5| STM32_US[Ultrasonic Driver]
-    STM32_US -->|Distances in cm| ADAS_Engine[ADAS Engine]
+    Obstacles["Obstacles"] -->|HC-SR04 Echoes PB1, PB3, PB5| STM32_US["Ultrasonic Driver"]
+    STM32_US -->|Distances in cm| ADAS_Engine["ADAS Engine"]
     
-    EV_Dynamics -->|Speed & Torque| ADAS_Engine
+    EV_Dynamics -->|Speed and Torque| ADAS_Engine
     ADAS_Engine -->|TTC Calculations| ADAS_Engine
     
-    EV_Dynamics & ADAS_Engine -->|Temp / SOC / Warnings| Fault_Manager[Fault Manager]
-    Fault_Manager -->|Contactor/Safe State Trigger| EV_Dynamics
+    EV_Dynamics & ADAS_Engine -->|Temp, SOC and Warnings| Fault_Manager["Fault Manager"]
+    Fault_Manager -->|Contactor and Safe State Trigger| EV_Dynamics
     
-    EV_Dynamics & ADAS_Engine & Fault_Manager -->|Core Telemetry variables| UART_Tx[UART Telemetry Transmit]
+    EV_Dynamics & ADAS_Engine & Fault_Manager -->|Core Telemetry variables| UART_Tx["UART Telemetry Transmit"]
     
-    UART_Tx -->|ASCII stream over USB-UART| Py_Parser[Python Serial Parser]
-    Py_Parser -->|Matplotlib UI Update| Live_GUI[Live Visual Gauges]
+    UART_Tx -->|ASCII stream over USB-UART| Py_Parser["Python Serial Parser"]
+    Py_Parser -->|Matplotlib UI Update| Live_GUI["Live Visual Gauges"]
 ```
 
 ---
@@ -393,18 +392,18 @@ The vehicle's operational state is governed by a state machine that controls tra
 stateDiagram-v2
     [*] --> STATE_PARKED : System Boot
 
-    STATE_PARKED --> STATE_READY : Accelerator Pedal > 2.0%
+    STATE_PARKED --> STATE_READY : Accelerator Pedal Above 2 Percent
     STATE_READY --> STATE_DRIVING : Auto Transition (or driver select)
 
-    STATE_DRIVING --> STATE_REGEN : Brake Pedal > 5.0%
-    STATE_REGEN --> STATE_DRIVING : Brake Pedal <= 5.0%
+    STATE_DRIVING --> STATE_REGEN : Brake Pedal Above 5 Percent
+    STATE_REGEN --> STATE_DRIVING : Brake Pedal Below or Equal 5 Percent
 
     STATE_DRIVING --> STATE_FAULT : Thermal Event / Critical Depletion / Collision
     STATE_REGEN --> STATE_FAULT : Thermal Event / Critical Depletion / Collision
     STATE_READY --> STATE_FAULT : Critical Fault Detected
     STATE_PARKED --> STATE_FAULT : Critical Fault Detected
 
-    STATE_FAULT --> STATE_PARKED : "fault clear" command received
+    STATE_FAULT --> STATE_PARKED : Fault Clear Command received
 ```
 
 ---
