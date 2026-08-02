@@ -144,7 +144,7 @@ int main(void)
   HCSR04_Init();
   ADAS_Init(&adas);
   Fault_Init(&flt);
-  Shell_Init(&huart1, &adas, &ev, &flt);
+  Shell_Init(&huart1, &ev, &adas, &flt);
   /* USER CODE END 2 */
 
   /* Infinite loop */
