@@ -11,44 +11,44 @@ The system uses a Hardware-in-the-Loop (HIL) architecture where the safety criti
 ```mermaid
 graph TD
     subgraph Inputs [Physical/Simulated Inputs]
-        POT_ACC[PA0: Accelerator Potentiometer]
-        POT_BRK[PA1: Brake Potentiometer]
-        POT_TMP[PA3: Motor NTC Thermistor]
-        US_F[PB0/PB1: Echo/Trig Front HC-SR04]
-        US_L[PB2/PB3: Echo/Trig Left HC-SR04]
-        US_R[PB4/PB5: Echo/Trig Right HC-SR04]
+        POT_ACC["PA0: Accelerator Potentiometer"]
+        POT_BRK["PA1: Brake Potentiometer"]
+        POT_TMP["PA3: Motor NTC Thermistor"]
+        US_F["PB0/PB1: Echo/Trig Front HC-SR04"]
+        US_L["PB2/PB3: Echo/Trig Left HC-SR04"]
+        US_R["PB4/PB5: Echo/Trig Right HC-SR04"]
     end
 
     subgraph Controller [STM32F103C8 Controller Core]
         subgraph Drivers [Peripherals & Drivers]
-            ADC[ADC1 Multi-channel]
-            TIM1[TIM1 Scheduler 100Hz]
-            TIM3[TIM3 Scheduler 10Hz]
-            TIM2[TIM2 Microsecond Counter]
-            TIM4[TIM4 Buzzer PWM Generator]
-            USART1[USART1 Telemetry & CLI Port]
+            ADC["ADC1 Multi-channel"]
+            TIM1["TIM1 Scheduler 100Hz"]
+            TIM3["TIM3 Scheduler 10Hz"]
+            TIM2["TIM2 Microsecond Counter"]
+            TIM4["TIM4 Buzzer PWM Generator"]
+            USART1["USART1 Telemetry & CLI Port"]
         end
 
         subgraph Modules [Application Logic]
-            EV_Dyn[EV Dynamics Engine]
-            ADAS_Eng[ADAS Decision Engine]
-            Fault_Mgr[Diagnostic Fault Manager]
-            UART_Shell[Diagnostic Ring Buffer CLI]
+            EV_Dyn["EV Dynamics Engine"]
+            ADAS_Eng["ADAS Decision Engine"]
+            Fault_Mgr["Diagnostic Fault Manager"]
+            UART_Shell["Diagnostic Ring Buffer CLI"]
         end
     end
 
     subgraph Outputs [Safety & Alert Outputs]
-        BUZZ[PB6: PWM Buzzer Output]
-        LED_C[PB8: Collision Indicator LED]
-        LED_L[PB9: Left BSD Alert LED]
-        LED_R[PB10: Right BSD Alert LED]
-        CONT[PB11: Safety Contactor / Fault LED]
+        BUZZ["PB6: PWM Buzzer Output"]
+        LED_C["PB8: Collision Indicator LED"]
+        LED_L["PB9: Left BSD Alert LED"]
+        LED_R["PB10: Right BSD Alert LED"]
+        CONT["PB11: Safety Contactor / Fault LED"]
     end
 
     subgraph Host [Host Visualization PC]
-        Ser[PySerial Reader Thread]
-        Queue[Telemetry Parser & State Cache]
-        GUI[Matplotlib Render Thread]
+        Ser["PySerial Reader Thread"]
+        Queue["Telemetry Parser & State Cache"]
+        GUI["Matplotlib Render Thread"]
     end
 
     %% Sensor to driver mappings
@@ -141,20 +141,20 @@ The system uses a rate-monotonic, cooperative multitasking scheduler powered by 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant HW as Microcontroller Timers
-    participant ISR as Interrupt Services (IT)
-    participant Executive as Main Background Loop
-    participant Dynamics as EV Control Module
-    participant ADAS as ADAS Safety Engine
-    participant Fault as Fault Manager
-    participant Shell as CLI Processor
+    participant HW as "Microcontroller Timers"
+    participant ISR as "Interrupt Services (IT)"
+    participant Executive as "Main Background Loop"
+    participant Dynamics as "EV Control Module"
+    participant ADAS as "ADAS Safety Engine"
+    participant Fault as "Fault Manager"
+    participant Shell as "CLI Processor"
 
     %% 10ms Tick Loop
     Note over HW, Executive: Timer 1 triggers at 100 Hz (every 10ms)
     HW->>ISR: TIM1 Overflow Interrupt
     ISR->>Executive: Set flag_ev = 1
     activate Executive
-    Executive->>Dynamics: EV_ReadADC() & EV_Update(dt = 0.01s)
+    Executive->>Dynamics: EV_ReadADC() and EV_Update(dt = 0.01s)
     activate Dynamics
     Dynamics-->>Executive: Returns current Speed, SOC, Torque
     deactivate Dynamics
@@ -191,36 +191,40 @@ The vehicle state machine manages operational modes and safety transitions:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> STATE_PARKED : Initialization (Boot)
+    [*] --> STATE_PARKED : System Boot
     
-    state STATE_PARKED {
-        Note right of STATE_PARKED: Torque demand zeroed.<br/>Battery energy static.
-    }
-    state STATE_READY {
-        Note right of STATE_READY: Pre-charge contactors closed.<br/>Traction system enabled.
-    }
-    state STATE_DRIVING {
-        Note right of STATE_DRIVING: Acceleration mapped to positive torque.
-    }
-    state STATE_REGEN {
-        Note right of STATE_REGEN: Brake pedal maps to negative torque.<br/>Battery SOC recharges.
-    }
-    state STATE_FAULT {
-        Note right of STATE_FAULT: Contactor tripped (PB11 High).<br/>Traction torque locked at 0.
-    }
+    note right of STATE_PARKED
+        Torque demand zeroed.
+        Battery energy static.
+    end note
+    note right of STATE_READY
+        Pre-charge contactors closed.
+        Traction system enabled.
+    end note
+    note right of STATE_DRIVING
+        Acceleration maps to positive torque.
+    end note
+    note right of STATE_REGEN
+        Brake pedal maps to negative torque.
+        Battery SOC recharges.
+    end note
+    note right of STATE_FAULT
+        Contactor tripped (PB11 High).
+        Traction torque locked at 0.
+    end note
 
-    STATE_PARKED --> STATE_READY : Accelerator Pedal > 2%
+    STATE_PARKED --> STATE_READY : Accelerator Pedal Above 2%
     STATE_READY --> STATE_DRIVING : Auto Transition (Traction enabled)
     
-    STATE_DRIVING --> STATE_REGEN : Brake Pedal > 5%
-    STATE_REGEN --> STATE_DRIVING : Brake Pedal <= 5%
+    STATE_DRIVING --> STATE_REGEN : Brake Pedal Above 5%
+    STATE_REGEN --> STATE_DRIVING : Brake Pedal Below or Equal 5%
     
-    STATE_DRIVING --> STATE_FAULT : Thermal > 90°C OR SOC <= 2% OR Collision Warn Crit
-    STATE_REGEN --> STATE_FAULT : Thermal > 90°C OR SOC <= 2% OR Collision Warn Crit
-    STATE_READY --> STATE_FAULT : Thermal > 90°C OR SOC <= 2% OR Collision Warn Crit
-    STATE_PARKED --> STATE_FAULT : Thermal > 90°C OR SOC <= 2% OR Collision Warn Crit
+    STATE_DRIVING --> STATE_FAULT : Thermal Event / Critical Low SOC / Critical Collision
+    STATE_REGEN --> STATE_FAULT : Thermal Event / Critical Low SOC / Critical Collision
+    STATE_READY --> STATE_FAULT : Critical Fault Detected
+    STATE_PARKED --> STATE_FAULT : Critical Fault Detected
     
-    STATE_FAULT --> STATE_PARKED : "fault clear" command received (Variables reset)
+    STATE_FAULT --> STATE_PARKED : Fault Clear Command (Variables reset)
 ```
 
 ---
@@ -232,24 +236,24 @@ The physics engine simulates the mechanical and electrical characteristics of an
 ```mermaid
 flowchart TD
     %% Inputs
-    IN_A[PA0: Accelerator Position %]
-    IN_B[PA1: Brake Position %]
-    IN_M[Drive Mode Selection: ECO/NORMAL/SPORT]
+    IN_A["PA0: Accelerator Position %"]
+    IN_B["PA1: Brake Position %"]
+    IN_M["Drive Mode Selection: ECO/NORMAL/SPORT"]
     
     %% Mechanical Path
-    MAP_T[Drive Mode Torque Scale]
-    TRQ_D[Traction Torque Demand]
-    TRQ_R[Regenerative Torque Demand]
-    NET_F[Net Traction Force]
-    ACC_C[Euler Acceleration Integration]
-    VEL_C[Update Vehicle Speed]
+    MAP_T["Drive Mode Torque Scale"]
+    TRQ_D["Traction Torque Demand"]
+    TRQ_R["Regenerative Torque Demand"]
+    NET_F["Net Traction Force"]
+    ACC_C["Euler Acceleration Integration"]
+    VEL_C["Update Vehicle Speed"]
     
     %% Electrical Path
-    MECH_P[Mechanical Power: T * w]
-    LOSS_P[Copper Loss Power: I^2R]
-    NET_E[Net Electrical Power]
-    SOC_I[SOC Energy Integration]
-    RNG_P[Range Prediction]
+    MECH_P["Mechanical Power: T * w"]
+    LOSS_P["Copper Loss Power: I^2R"]
+    NET_E["Net Electrical Power"]
+    SOC_I["SOC Energy Integration"]
+    RNG_P["Range Prediction"]
     
     %% Connections Mechanical
     IN_A & IN_M --> MAP_T --> TRQ_D
@@ -300,27 +304,27 @@ The ADAS engine monitors safety thresholds and manages alerts:
 ```mermaid
 flowchart TD
     %% Inputs
-    IN_SPD[Vehicle Speed km/h]
-    IN_F[Front Sensor cm]
-    IN_L[Left Sensor cm]
-    IN_R[Right Sensor cm]
+    IN_SPD["Vehicle Speed km/h"]
+    IN_F["Front Sensor cm"]
+    IN_L["Left Sensor cm"]
+    IN_R["Right Sensor cm"]
 
     %% Calcs
-    TTC_CALC[TTC Calculation: dist / speed]
+    TTC_CALC["TTC Calculation: dist / speed"]
     
     %% Hazard Evaluators
-    FCW_CHECK[FCW Warn/Crit Evaluator]
-    BSD_CHECK[BSD Left/Right Gate]
-    OVR_CHECK[Overspeed Evaluator]
+    FCW_CHECK["FCW Warn/Crit Evaluator"]
+    BSD_CHECK["BSD Left/Right Gate"]
+    OVR_CHECK["Overspeed Evaluator"]
     
     %% Hysteresis
-    FCW_HYST[FCW Alert Filter]
-    BSD_HYST[BSD Alert Filter]
-    OVR_HYST[Overspeed Filter]
+    FCW_HYST["FCW Alert Filter"]
+    BSD_HYST["BSD Alert Filter"]
+    OVR_HYST["Overspeed Filter"]
     
     %% Outputs
-    ALARM_P[Determine Alarm Priority]
-    DRV_LED[Drive Alerts to LEDs & Pin Indicators]
+    ALARM_P["Determine Alarm Priority"]
+    DRV_LED["Drive Alerts to LEDs & Pin Indicators"]
 
     %% Connectors
     IN_SPD & IN_F --> TTC_CALC
@@ -351,22 +355,22 @@ The Fault Manager protects system components. It operates as a latching safety m
 ```mermaid
 flowchart TD
     %% Monitors
-    M_OT[Motor Temp >= 90 degC]
-    M_SOC[Battery SOC <= 2%]
-    M_COL[Critical Collision: Distance < 20cm OR TTC < 1.5s]
+    M_OT["Motor Temp >= 90 degC"]
+    M_SOC["Battery SOC <= 2%"]
+    M_COL["Critical Collision: Distance < 20cm OR TTC < 1.5s"]
 
     %% Latching
-    FAULT_L[Set Fault Bitmask & Latch Active Status]
+    FAULT_L["Set Fault Bitmask & Latch Active Status"]
     
     %% Safe State Actions
-    SAFE_ST[Transition state to STATE_FAULT]
-    CON_TRIP[Assert Contactor Pin PB11 HIGH]
-    TRQ_LOCK[Force Motor Torque to 0]
+    SAFE_ST["Transition state to STATE_FAULT"]
+    CON_TRIP["Assert Contactor Pin PB11 HIGH"]
+    TRQ_LOCK["Force Motor Torque to 0"]
     
     %% Recovery Path
-    CMD_CLR[CLI Command: fault clear]
-    REC_INIT[Execute Re-initialization & Reset parameters]
-    NORM_RET[Transition state to STATE_PARKED]
+    CMD_CLR["CLI Command: fault clear"]
+    REC_INIT["Execute Re-initialization & Reset parameters"]
+    NORM_RET["Transition state to STATE_PARKED"]
 
     %% Flow
     M_OT & M_SOC & M_COL -->|Safety Event Trigger| FAULT_L
@@ -387,11 +391,11 @@ Communication with the host PC is handled by USART1. The configuration is **1152
 
 ```mermaid
 sequenceDiagram
-    participant PC as Python App / Serial Monitor
-    participant ISR as STM32 UART Rx Interrupt
-    participant RB as Ring Buffer
-    participant Shell as Shell Command Module
-    participant Core as Firmware Core State
+    participant PC as "Python App / Serial Monitor"
+    participant ISR as "STM32 UART Rx Interrupt"
+    participant RB as "Ring Buffer"
+    participant Shell as "Shell Command Module"
+    participant Core as "Firmware Core State"
 
     PC->>ISR: Character Sent (e.g., 'm')
     ISR->>RB: Push character to _rb
@@ -422,24 +426,24 @@ The dashboard is built with Python 3 and runs two threads:
 
 ```mermaid
 flowchart TD
-    subgraph Serial_Thread [Serial Reader Thread]
-        RD_COM[Read Serial Stream]
-        RG_PAR[Regex Frame Extraction]
-        SH_STA[Write Shared State Dictionary]
+    subgraph Serial_Thread ["Serial Reader Thread"]
+        RD_COM["Read Serial Stream"]
+        RG_PAR["Regex Frame Extraction"]
+        SH_STA["Write Shared State Dictionary"]
     end
 
-    subgraph Render_Thread [Matplotlib GUI Loop]
-        EV_REF[FuncAnimation 100ms Trigger]
-        RD_STA[Read Shared State Cache]
+    subgraph Render_Thread ["Matplotlib GUI Loop"]
+        EV_REF["FuncAnimation 100ms Trigger"]
+        RD_STA["Read Shared State Cache"]
         
         %% Render sub-functions
-        DRW_S[Draw Speedometer gauge]
-        DRW_B[Draw Battery SOC status]
-        DRW_T[Draw Speed Trend line]
-        DRW_I[Draw Digital Metrics Panel]
-        DRW_A[Draw Bird-eye Obstacle view]
+        DRW_S["Draw Speedometer gauge"]
+        DRW_B["Draw Battery SOC status"]
+        DRW_T["Draw Speed Trend line"]
+        DRW_I["Draw Digital Metrics Panel"]
+        DRW_A["Draw Bird-eye Obstacle view"]
         
-        FLSH_B[Flash Background red on Alarm Crit]
+        FLSH_B["Flash Background red on Alarm Crit"]
     end
 
     RD_COM --> RG_PAR --> SH_STA
@@ -498,18 +502,18 @@ To transition this prototype into a production-grade automotive electronic contr
 
 ```mermaid
 graph TD
-    subgraph Prototype [Simulated Prototype]
-        UART[UART Serial link]
-        Sched[Cooperative Scheduler]
-        Sim_S[Simulated Sensors]
-        Poll_A[Polled ADC & Serial]
+    subgraph Prototype ["Simulated Prototype"]
+        UART["UART Serial link"]
+        Sched["Cooperative Scheduler"]
+        Sim_S["Simulated Sensors"]
+        Poll_A["Polled ADC & Serial"]
     end
 
-    subgraph Production [Production Grade ECU]
-        CAN[CAN / CAN-FD Bus]
-        OS[Preemptive RTOS (OSEK/VDX or FreeRTOS)]
-        Sens[Automotive Grade Sensors]
-        DMA[DMA-managed ADC & UART]
+    subgraph Production ["Production Grade ECU"]
+        CAN["CAN / CAN-FD Bus"]
+        OS["Preemptive RTOS (OSEK/VDX or FreeRTOS)"]
+        Sens["Automotive Grade Sensors"]
+        DMA["DMA-managed ADC & UART"]
     end
 
     UART -->|Upgrade to differential bus| CAN
