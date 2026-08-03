@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0a0b0d; /* Deep dark slate/black dashboard background */
+  --color-card: #12141c;       /* Dashboard cards background */
+  --color-border: #1f2430;     /* Premium layout borders */
+  --color-primary: #10b981;    /* Active state green / speed glow */
+  --color-secondary: #3b82f6;  /* Telemetry metric blue */
+  --color-warning: #f59e0b;    /* Warning indicator amber */
+  --color-danger: #ef4444;     /* ADAS collision hazard red */
+  --color-muted: #6b7280;      /* Muted typography text */
+
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  --font-sans: 'Inter', 'Outfit', 'Segoe UI', sans-serif;
+}
+
+/* Core global scrollbars and styling rules */
+body {
+  background-color: var(--color-background);
+  color: #f3f4f6;
+  margin: 0;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar customization for a clean engineering look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-secondary);
+}
+
+/* Animations for active telemetry alarms */
+@keyframes pulse-red-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+    border-color: rgba(239, 68, 68, 1);
+  }
+}
+
+.animate-pulse-red {
+  animation: pulse-red-glow 2s infinite;
+}

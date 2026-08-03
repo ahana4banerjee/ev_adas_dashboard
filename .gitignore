@@ -21,3 +21,13 @@ Release/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Python virtual environment
+*venv
+*__pycache__
+
+# VS Code
+.vscode
+
+# Environment variables
+.env
