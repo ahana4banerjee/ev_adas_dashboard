@@ -75,6 +75,8 @@ function App() {
         if (msg.event === 'telemetry') {
           setMetrics(msg.data)
           setPacketStats(msg.stats || { rate: 10, crcErrors: 0, lostPackets: 0 })
+        } else if (msg.event === 'cmd_ack') {
+          setTerminalLogs(prev => [...prev, `[ACK] Command "${msg.data.command}" success: ${msg.data.success}`])
         }
       } catch (err) {
         console.error('Error parsing packet data:', err)

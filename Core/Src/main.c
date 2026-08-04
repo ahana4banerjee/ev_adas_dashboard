@@ -28,8 +28,7 @@
 #include "uart_shell.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
-
+#include "crc16.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -196,45 +195,53 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 static void Print_Status(void)
 {
-	char msg[100];
+	static uint32_t seq_id = 0;
+	uint32_t timestamp = HAL_GetTick();
 
-	int spd = (int)ev.speed_kmh;
-	int spdd = (int)(ev.speed_kmh * 10.0f)%10;
-	int soc = (int)ev.soc;
-	int socd = (int)(ev.soc * 10.0f)%10;
-	int tmp = (int)ev.motor_temp;
-	int tmpd = (int)(ev.motor_temp * 10.0f)%10;
-	int trq = (int)ev.motor_torque;
-	int acc = (int)ev.accel_pedal;
-	int brk = (int)ev.brake_pedal;
-	int rng = (int)ev.range_km;
+	int spd_whole = (int)ev.speed_kmh;
+	int spd_frac = (int)(ev.speed_kmh * 10.0f) % 10;
+	if (spd_frac < 0) spd_frac = -spd_frac;
 
-	int ttcs = (int)adas.ttc_sec;
-	int ttcd = (int)(adas.ttc_sec * 10.0f)%10;
-	int frnt = (int)adas.front_cm;
-	int left = (int)adas.left_cm;
-	int right = (int)adas.right_cm;
+	int soc_whole = (int)ev.soc;
+	int soc_frac = (int)(ev.soc * 10.0f) % 10;
+	if (soc_frac < 0) soc_frac = -soc_frac;
 
-	sprintf(msg,
-			"SPD:%d.%d SOC:%d.%d TRQ:%d TMP:%d.%d RNG:%d ACC:%d BRK:%d\r\n",
-			spd, spdd,
-			soc, socd,
-			trq,
-			tmp, tmpd,
-			rng,
-			acc, brk);
-	HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
+	int temp_whole = (int)ev.motor_temp;
+	int temp_frac = (int)(ev.motor_temp * 10.0f) % 10;
+	if (temp_frac < 0) temp_frac = -temp_frac;
 
-	sprintf(msg,
-			"F:%d L:%d R:%d TTC:%d.%ds COL:%d BSD:%d%d ALM:%d FLT:%02X\r\n",
-			frnt, left, right,
-			ttcs, ttcd,
+	int ttc_whole = (int)adas.ttc_sec;
+	int ttc_frac = (int)(adas.ttc_sec * 10.0f) % 10;
+	if (ttc_frac < 0) ttc_frac = -ttc_frac;
+
+	char payload[180];
+	sprintf(payload, "%lu,%lu,D,%d.%d,%d.%d,%d,%d.%d,%d,%d,%d,%d,%d,%d,%d.%d,%d,%d,%d,%d,%02X,%d",
+			(unsigned long)timestamp,
+			(unsigned long)seq_id++,
+			spd_whole, spd_frac,
+			soc_whole, soc_frac,
+			(int)ev.motor_torque,
+			temp_whole, temp_frac,
+			(int)ev.range_km,
+			(int)ev.accel_pedal,
+			(int)ev.brake_pedal,
+			(int)adas.front_cm,
+			(int)adas.left_cm,
+			(int)adas.right_cm,
+			ttc_whole, ttc_frac,
 			adas.collision_warn,
-			adas.blindspot_left, adas.blindspot_right,
+			adas.blindspot_left,
+			adas.blindspot_right,
 			(int)adas.alarm_priority,
-			flt.flags);
-	HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
+			flt.flags,
+			(int)ev.drive_mode);
 
+	uint16_t crc = CRC16_Calculate((uint8_t*)payload, strlen(payload));
+
+	char final_frame[220];
+	sprintf(final_frame, "$%s,%04X*\n", payload, crc);
+
+	HAL_UART_Transmit(&huart1, (uint8_t*)final_frame, strlen(final_frame), 100);
 }
 /**
   * @brief System Clock Configuration
