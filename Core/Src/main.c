@@ -29,6 +29,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "crc16.h"
+#include "buzzer.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -143,6 +144,7 @@ int main(void)
   HCSR04_Init();
   ADAS_Init(&adas);
   Fault_Init(&flt);
+  Buzzer_Init(&htim1, TIM_CHANNEL_1);
   Shell_Init(&huart1, &ev, &adas, &flt);
   /* USER CODE END 2 */
 
@@ -177,6 +179,13 @@ int main(void)
 
 	    	  Shell_Process();
 
+	    	  /* Resolve alarm priority hierarchy and tick buzzer */
+	    	  if (flt.active) {
+	    	      Buzzer_SetAlarmLevel(ALARM_CRITICAL);
+	    	  } else {
+	    	      Buzzer_SetAlarmLevel(adas.alarm_priority);
+	    	  }
+	    	  Buzzer_Update();
 	      }
 	  }
     /* USER CODE END WHILE */
