@@ -86,25 +86,120 @@ function AdasCanvas({ frontDist, leftDist, rightDist, collisionWarn, bsdLeft, bs
       ctx.fill()
       ctx.stroke()
 
-      // 3. Draw Ego Vehicle (Center Box)
-      ctx.fillStyle = '#12141c'
-      ctx.strokeStyle = collisionWarn === 2 ? '#ef4444' : '#3b82f6'
-      ctx.lineWidth = 3
-      ctx.shadowColor = collisionWarn === 2 ? '#ef4444' : '#3b82f6'
-      ctx.shadowBlur = 10
-      ctx.beginPath()
-      ctx.roundRect(cx - egoW / 2, cy - egoH / 2, egoW, egoH, 8)
-      ctx.fill()
-      ctx.stroke()
-      ctx.shadowBlur = 0 // Reset glow shadow
+      // Helper to draw a detailed bird's-eye view car vector
+      const drawCar = (x, y, w, h, bodyColor, outlineColor, isBrakeActive) => {
+        ctx.save()
+        ctx.translate(x, y)
 
-      // Draw Brake lights (active red if critical collision alert is triggered)
-      const brakeActive = collisionWarn === 2
-      ctx.fillStyle = brakeActive ? '#ef4444' : '#450a0a'
-      ctx.fillRect(cx - egoW / 2 + 2, cy + egoH / 2 - 4, 6, 3)
-      ctx.fillRect(cx + egoW / 2 - 8, cy + egoH / 2 - 4, 6, 3)
+        // 1. Draw Wheels
+        ctx.fillStyle = '#1e2430'
+        const wheelW = w * 0.16
+        const wheelH = h * 0.20
+        // Front-left / Front-right wheels
+        ctx.fillRect(-w / 2 - wheelW + 2, -h / 2 + h * 0.15, wheelW, wheelH)
+        ctx.fillRect(w / 2 - 2, -h / 2 + h * 0.15, wheelW, wheelH)
+        // Rear-left / Rear-right wheels
+        ctx.fillRect(-w / 2 - wheelW + 2, h / 2 - h * 0.15 - wheelH, wheelW, wheelH)
+        ctx.fillRect(w / 2 - 2, h / 2 - h * 0.15 - wheelH, wheelW, wheelH)
 
-      // 4. Draw Front Obstacle Vehicle (if inside the 400cm range)
+        // 2. Draw Side Mirrors
+        ctx.fillStyle = bodyColor
+        ctx.strokeStyle = outlineColor
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.roundRect(-w / 2 - 4, -h / 2 + h * 0.28, 5, 3, 1)
+        ctx.roundRect(w / 2 - 1, -h / 2 + h * 0.28, 5, 3, 1)
+        ctx.fill()
+        ctx.stroke()
+
+        // 3. Draw Aerodynamic Chassis Body
+        ctx.fillStyle = bodyColor
+        ctx.strokeStyle = outlineColor
+        ctx.lineWidth = 2.5
+        ctx.shadowColor = outlineColor
+        ctx.shadowBlur = 8
+        ctx.beginPath()
+        ctx.moveTo(-w * 0.35, -h / 2)
+        ctx.bezierCurveTo(-w * 0.45, -h * 0.4, -w * 0.5, -h * 0.2, -w * 0.5, 0)
+        ctx.bezierCurveTo(-w * 0.5, h * 0.2, -w * 0.48, h * 0.4, -w * 0.4, h / 2)
+        ctx.lineTo(w * 0.4, h / 2)
+        ctx.bezierCurveTo(w * 0.48, h * 0.4, w * 0.5, h * 0.2, w * 0.5, 0)
+        ctx.bezierCurveTo(w * 0.5, -h * 0.2, w * 0.45, -h * 0.4, w * 0.35, -h / 2)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+        ctx.shadowBlur = 0 // Reset glow
+
+        // 4. Tinted Cabin Windows
+        ctx.fillStyle = '#0f172a'
+        ctx.strokeStyle = '#1e293b'
+        ctx.lineWidth = 1
+        // Front Windshield
+        ctx.beginPath()
+        ctx.moveTo(-w * 0.32, -h * 0.18)
+        ctx.lineTo(w * 0.32, -h * 0.18)
+        ctx.quadraticCurveTo(w * 0.35, -h * 0.08, w * 0.28, 0)
+        ctx.lineTo(-w * 0.28, 0)
+        ctx.quadraticCurveTo(-w * 0.35, -h * 0.08, -w * 0.32, -h * 0.18)
+        ctx.fill()
+        ctx.stroke()
+
+        // Rear Windshield
+        ctx.beginPath()
+        ctx.moveTo(-w * 0.30, h * 0.20)
+        ctx.lineTo(w * 0.30, h * 0.20)
+        ctx.lineTo(w * 0.34, h * 0.36)
+        ctx.lineTo(-w * 0.34, h * 0.36)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+
+        // Side Glass panels
+        ctx.beginPath()
+        ctx.moveTo(-w * 0.43, -h * 0.10)
+        ctx.lineTo(-w * 0.41, h * 0.16)
+        ctx.lineTo(-w * 0.34, h * 0.14)
+        ctx.lineTo(-w * 0.34, -h * 0.08)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+
+        ctx.beginPath()
+        ctx.moveTo(w * 0.43, -h * 0.10)
+        ctx.lineTo(w * 0.41, h * 0.16)
+        ctx.lineTo(w * 0.34, h * 0.14)
+        ctx.lineTo(w * 0.34, -h * 0.08)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+
+        // 5. Headlights
+        ctx.fillStyle = '#fef08a'
+        ctx.fillRect(-w * 0.40, -h / 2 + 1, 5, 2.5)
+        ctx.fillRect(w * 0.40 - 5, -h / 2 + 1, 5, 2.5)
+
+        // 6. Taillights (Brakes)
+        ctx.fillStyle = isBrakeActive ? '#f87171' : '#b91c1c'
+        ctx.fillRect(-w * 0.36, h / 2 - 3, 6, 2.5)
+        ctx.fillRect(w * 0.36 - 6, h / 2 - 3, 6, 2.5)
+
+        // Hood Lines
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(-w * 0.12, -h / 2 + 4)
+        ctx.lineTo(-w * 0.12, -h * 0.22)
+        ctx.moveTo(w * 0.12, -h / 2 + 4)
+        ctx.lineTo(w * 0.12, -h * 0.22)
+        ctx.stroke()
+
+        ctx.restore()
+      }
+
+      // 3. Draw Ego Vehicle (Center Position)
+      drawCar(cx, cy, egoW, egoH, '#12141c', collisionWarn === 2 ? '#ef4444' : '#3b82f6', collisionWarn === 2)
+
+      // 4. Draw Front Obstacle Vehicle (if inside 400cm zone)
       if (frontDist < 400) {
         // Interpolate distance: 0cm -> close (cy - 70), 400cm -> far (30)
         const minY = 30
@@ -125,17 +220,8 @@ function AdasCanvas({ frontDist, leftDist, rightDist, collisionWarn, bsdLeft, bs
         ctx.stroke()
         ctx.setLineDash([])
 
-        // Draw Obstacle Vehicle Box
-        ctx.fillStyle = '#1c1b1e'
-        ctx.strokeStyle = collisionWarn === 2 ? '#ef4444' : '#f59e0b'
-        ctx.lineWidth = 2
-        ctx.shadowColor = collisionWarn === 2 ? '#ef4444' : '#f59e0b'
-        ctx.shadowBlur = 8
-        ctx.beginPath()
-        ctx.roundRect(cx - obsW / 2, obstacleY - obsH / 2, obsW, obsH, 5)
-        ctx.fill()
-        ctx.stroke()
-        ctx.shadowBlur = 0
+        // Draw Obstacle Vehicle
+        drawCar(cx, obstacleY, obsW, obsH, '#1e293b', collisionWarn === 2 ? '#ef4444' : '#f59e0b', false)
 
         // Draw Distance Text next to target
         ctx.fillStyle = collisionWarn === 2 ? '#ef4444' : '#f59e0b'
