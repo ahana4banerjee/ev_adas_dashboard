@@ -1,16 +1,39 @@
-# React + Vite
+# React Dashboard Client (Vite + Tailwind CSS)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The EV ADAS Dashboard is a premium web client designed to monitor real-time vehicle telematics, adjust safety parameter registers, trigger diagnostic fault overrides, and replay logged driving sessions.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 1. Features
+* **Traction Cockpit**: Custom-rendered SVG dial gauges tracking speed and motor torque.
+* **ADAS Obstacle Radar**: HTML5 Canvas rendering a bird's-eye view lane layout with animated lane markers, blind spot sectors, and detailed vector sports car graphics.
+* **Telemetry Scrolling Charts**: Recharts line graphics plotting Speed, Torque, and Motor Temperature histories.
+* **Fault Center & Diagnostics**: Interactive buttons to inject virtual faults (Motor Overheat, Low SOC, Collision Alerts) and sliders to override ultrasonic obstacle readings.
+* **Session Replay Manager**: Timeline Scrubbers to seek, speed-up ($0.5x$ to $4.0x$), and review database logs.
+* **Audible Alert Toggle**: Mute/Unmute buttons driving a virtual Web Audio API hazard sound matching active alarms.
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 2. Installation & Run Instructions
 
-## Expanding the Oxlint configuration
+### Setup Instructions
+1. Open your terminal in the `dashboard` folder:
+   ```powershell
+   cd dashboard
+   ```
+2. Install npm node modules:
+   ```powershell
+   npm install
+   ```
+3. Run the development server:
+   ```powershell
+   npm run dev
+   ```
+4. Open your browser and navigate to `http://localhost:5173/`.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### Building for Production
+To output optimized CSS/HTML files:
+```powershell
+npm run build
+```
+The compiled build output will be stored in `dist/`.
