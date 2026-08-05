@@ -18,6 +18,14 @@ class SerialManager:
         self.parser = TelemetryParser()
         self.serial_conn = None
 
+        # Demo simulation state parameters & overrides
+        self.demo_temp_override = None
+        self.demo_soc_override = None
+        self.demo_col_override = None
+        self.demo_obstacle_override = None
+        self.demo_fault_flags = 0
+        self.demo_drive_mode = 1 # 0: ECO, 1: NORMAL, 2: SPORT
+
     def start(self):
         self.running = True
         self.thread = threading.Thread(target=self._run, daemon=True)
@@ -40,7 +48,40 @@ class SerialManager:
         Format: $[timestamp,seq,C,command,value,CRC]*\n
         """
         if self.demo_mode:
-            logger.info(f"[DEMO COMMAND] Received command request: {cmd}")
+            logger.info(f"[DEMO COMMAND] Intercepted CLI command: {cmd}")
+            # Map parameters for demo simulation feedback
+            if cmd == "fault inject motor":
+                self.demo_temp_override = 95.0
+                self.demo_fault_flags |= 0x01
+            elif cmd == "fault inject soc":
+                self.demo_soc_override = 1.0
+                self.demo_fault_flags |= 0x02
+            elif cmd == "fault inject col":
+                self.demo_col_override = 2
+                self.demo_fault_flags |= 0x04
+            elif cmd == "fault clear":
+                self.demo_temp_override = None
+                self.demo_soc_override = None
+                self.demo_col_override = None
+                self.demo_obstacle_override = None
+                self.demo_fault_flags = 0
+            elif cmd.startswith("obstacle "):
+                sub = cmd.split(None, 1)[1]
+                if sub == "clear":
+                    self.demo_obstacle_override = None
+                else:
+                    try:
+                        self.demo_obstacle_override = float(sub)
+                    except ValueError:
+                        pass
+            elif cmd.startswith("mode "):
+                sub = cmd.split(None, 1)[1]
+                if sub == "eco":
+                    self.demo_drive_mode = 0
+                elif sub == "normal":
+                    self.demo_drive_mode = 1
+                elif sub == "sport":
+                    self.demo_drive_mode = 2
             return True
 
         if not self.serial_conn or not self.serial_conn.is_open:
@@ -74,12 +115,12 @@ class SerialManager:
         temp = 25.0
         accel = 0
         brake = 0
-        drive_mode = 1 # NORMAL
         
         while self.running:
             # Generate simulated driving telemetry variables at 10Hz
             timestamp = int(time.time() * 1000) & 0xFFFFFFFF
             t = time.time()
+            drive_mode = self.demo_drive_mode
             
             # Simulate accelerator pedal oscillation cycles
             accel = int((t % 20) * 5) if (t % 40) < 20 else int((20 - (t % 20)) * 5)
@@ -88,17 +129,30 @@ class SerialManager:
             if accel > 0:
                 torque = int(accel * 1.2)
                 speed += (torque * 0.01 - speed * 0.05) * 0.1
-                soc -= 0.005 # Slowly drain battery
+                if self.demo_soc_override is not None:
+                    soc = self.demo_soc_override
+                else:
+                    soc -= 0.005 # Slowly drain battery
             else:
                 torque = 0
                 speed -= speed * 0.05 * 0.1
+                if self.demo_soc_override is not None:
+                    soc = self.demo_soc_override
                 
             speed = max(0.0, speed)
             soc = max(0.0, soc)
-            temp = 25.0 + (speed * 0.3) + (t % 5)
+            
+            if self.demo_temp_override is not None:
+                temp = self.demo_temp_override
+            else:
+                temp = 25.0 + (speed * 0.3) + (t % 5)
             
             # Simulate ADAS sensor range approach cones (front target cycles in range)
-            front_cm = int(400 - ((t * 15) % 380))
+            if self.demo_obstacle_override is not None:
+                front_cm = self.demo_obstacle_override
+            else:
+                front_cm = int(400 - ((t * 15) % 380))
+                
             left_cm = 400
             right_cm = 400
             
@@ -111,10 +165,13 @@ class SerialManager:
                 
             # Mapped warn states
             collision_warn = 0
-            if ttc < 1.5:
-                collision_warn = 2 # CRITICAL
-            elif ttc < 3.0:
-                collision_warn = 1 # WARNING
+            if self.demo_col_override is not None:
+                collision_warn = self.demo_col_override
+            else:
+                if ttc < 1.5:
+                    collision_warn = 2 # CRITICAL
+                elif ttc < 3.0:
+                    collision_warn = 1 # WARNING
                 
             alarm_priority = 0
             if collision_warn == 2:
@@ -123,7 +180,7 @@ class SerialManager:
                 alarm_priority = 2
                 
             # Latch faults based on simulated limits
-            fault_flags = 0
+            fault_flags = self.demo_fault_flags
             if soc < 2.0:
                 fault_flags |= 0x02
             if temp >= 90.0:
@@ -138,7 +195,6 @@ class SerialManager:
             
             parsed = self.parser.parse_frame(frame)
             if parsed and self.on_packet_received:
-                # Append raw frame string to telemetry dictionary for CLI inspect logs
                 parsed["raw"] = frame.strip()
                 self.on_packet_received(parsed)
                 
