@@ -31,3 +31,8 @@ Thumbs.db
 
 # Environment variables
 .env
+
+# Telemetry SQLite Databases
+telemetry_bridge/*.db
+telemetry_bridge/*.db-wal
+telemetry_bridge/*.db-shm
