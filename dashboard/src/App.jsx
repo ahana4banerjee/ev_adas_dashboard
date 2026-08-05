@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react'
 import DashboardLayout from './components/DashboardLayout'
 import StatusHeader from './components/StatusHeader'
 import { Play, Pause, RotateCcw, ShieldCheck, Terminal, ShieldAlert, Cpu, AlertTriangle } from 'lucide-react'
+import MetricGauge from './components/MetricGauge'
+import AdasCanvas from './components/AdasCanvas'
+import TelemetryChart from './components/TelemetryChart'
 
 function App() {
   const [activeView, setActiveView] = useState('live')
@@ -35,6 +38,14 @@ function App() {
     crcErrors: 0,
     lostPackets: 0
   })
+
+  // Telemetry rolling chart history
+  const [chartHistory, setChartHistory] = useState([
+    { time: '0', speed: 0, temp: 25 },
+    { time: '5', speed: 20, temp: 25.5 },
+    { time: '10', speed: 45, temp: 26.2 },
+    { time: '15', speed: 72.5, temp: 27.1 }
+  ])
 
   // Simulated Web CLI Terminal inputs
   const [terminalInput, setTerminalInput] = useState('')
@@ -75,6 +86,20 @@ function App() {
         if (msg.event === 'telemetry') {
           setMetrics(msg.data)
           setPacketStats(msg.stats || { rate: 10, crcErrors: 0, lostPackets: 0 })
+          
+          // Capture timestamp and update the line chart buffer (avoiding duplicates)
+          const timeSec = (msg.data.timestamp / 1000).toFixed(0)
+          setChartHistory(prev => {
+            if (prev.length > 0 && prev[prev.length - 1].time === timeSec) {
+              return prev
+            }
+            const newPoint = {
+              time: timeSec,
+              speed: msg.data.speed,
+              temp: msg.data.temp
+            }
+            return [...prev, newPoint].slice(-45) // Keep a rolling window of 45 seconds
+          })
         } else if (msg.event === 'cmd_ack') {
           setTerminalLogs(prev => [...prev, `[ACK] Command "${msg.data.command}" success: ${msg.data.success}`])
         }
@@ -128,23 +153,17 @@ function App() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Card 1: Dials Display (Speed & Torque) */}
           <div className="bg-card border border-border rounded-xl p-6 flex flex-col justify-between">
-            <div className="text-xs font-mono font-bold text-gray-400 mb-4 uppercase tracking-wider">Traction Cockpit</div>
-            <div className="flex-1 flex flex-col justify-center items-center py-6">
-              {/* Mock Speed Dial */}
-              <div className="relative w-48 h-48 border-4 border-dashed border-border rounded-full flex flex-col justify-center items-center mb-4">
-                <div className="text-4xl font-extrabold text-white">{metrics.speed}</div>
-                <div className="text-[10px] font-mono text-muted uppercase tracking-wider">KM/H</div>
-                {/* Pointer marker */}
-                <div className="absolute top-2 w-1.5 h-4 bg-primary rounded-full"></div>
+            <div className="text-xs font-mono font-bold text-gray-400 mb-2 uppercase tracking-wider">Traction Cockpit</div>
+            <div className="flex-1 flex flex-col justify-center items-center">
+              {/* Dynamic SVG Speed & Torque Gauges */}
+              <div className="flex flex-row justify-around items-center w-full">
+                <MetricGauge value={metrics.speed} min={0} max={120} title="Speedometer" unit="km/h" color="#10b981" />
+                <MetricGauge value={metrics.torque} min={0} max={100} title="Motor Torque" unit="Nm" color="#3b82f6" />
               </div>
               
-              <div className="w-full flex justify-between px-4 mt-2">
+              <div className="w-full flex justify-around px-4 border-t border-border/40 pt-4 mt-2">
                 <div className="text-center">
-                  <div className="text-lg font-bold text-gray-200">{metrics.torque} <span className="text-xs text-muted">Nm</span></div>
-                  <div className="text-[9px] font-mono text-muted uppercase">Motor Torque</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-primary">{metrics.driveMode}</div>
+                  <div className="text-sm font-bold text-gray-300">{metrics.driveMode}</div>
                   <div className="text-[9px] font-mono text-muted uppercase">Drive Mode</div>
                 </div>
               </div>
@@ -160,25 +179,17 @@ function App() {
               </div>
             </div>
             
-            {/* Visual Obstacle Canvas Area */}
-            <div className="flex-1 min-h-[220px] bg-background/50 border border-border/80 rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-              <div className="absolute top-4 font-mono text-[10px] text-muted">FRONT ACTIVE SECTOR</div>
-              
-              {/* Ego Vehicle and Sensor Cones Grid */}
-              <div className="w-32 h-44 border border-border/40 rounded bg-card/60 flex flex-col items-center justify-center z-10">
-                <div className="text-xs font-mono font-bold text-gray-300">EGO VEHICLE</div>
-                <div className="text-[9px] font-mono text-primary mt-1">SPEED GATE ON</div>
-              </div>
-
-              {/* Front Obstacle indicator box */}
-              <div className="absolute top-8 w-40 p-2 bg-danger/10 border border-danger/40 rounded flex justify-between items-center text-xs font-mono text-danger animate-pulse">
-                <span>Front Target:</span>
-                <span className="font-bold">{metrics.frontDist} cm</span>
-              </div>
-              
-              {/* Left/Right Sensor Cones */}
-              <div className="absolute left-4 text-[10px] font-mono text-muted">BSD LEFT: {metrics.leftDist}cm</div>
-              <div className="absolute right-4 text-[10px] font-mono text-muted">BSD RIGHT: {metrics.rightDist}cm</div>
+            {/* HTML5 Canvas Radar View */}
+            <div className="flex-1 min-h-[220px] flex items-center justify-center">
+              <AdasCanvas 
+                frontDist={metrics.frontDist} 
+                leftDist={metrics.leftDist} 
+                rightDist={metrics.rightDist} 
+                collisionWarn={metrics.collisionWarn} 
+                bsdLeft={metrics.bsdLeft} 
+                bsdRight={metrics.bsdRight} 
+                speed={metrics.speed} 
+              />
             </div>
           </div>
 
@@ -236,16 +247,8 @@ function App() {
           {/* Card 4: Scrolling Historical Charts */}
           <div className="bg-card border border-border rounded-xl p-6 lg:col-span-2 flex flex-col justify-between">
             <div className="text-xs font-mono font-bold text-gray-400 mb-4 uppercase tracking-wider">Real-time Telemetry Trend (60s)</div>
-            {/* Mock Chart Area */}
-            <div className="flex-1 min-h-[160px] bg-background/50 border border-border/50 rounded-lg p-4 flex flex-col justify-end relative">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-xs font-mono text-muted text-center uppercase tracking-widest">
-                Realcharts line display placeholder<br />
-                <span className="text-[10px] text-muted/60">(Telemetry rendering enabled in Phase 4)</span>
-              </div>
-              {/* Fake grid lines */}
-              <div className="w-full h-px bg-border/20 mb-8"></div>
-              <div className="w-full h-px bg-border/20 mb-8"></div>
-              <div className="w-full h-px bg-border/20"></div>
+            <div className="flex-grow">
+              <TelemetryChart data={chartHistory} />
             </div>
           </div>
         </div>
