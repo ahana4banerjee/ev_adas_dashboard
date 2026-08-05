@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import DashboardLayout from './components/DashboardLayout'
 import StatusHeader from './components/StatusHeader'
 import { Play, Pause, RotateCcw, ShieldCheck, Terminal, ShieldAlert, Cpu, AlertTriangle } from 'lucide-react'
@@ -72,6 +72,15 @@ function App() {
     ttcWarn: 3.0,
     ttcCrit: 1.5
   })
+
+  const terminalEndRef = useRef(null)
+
+  // Auto-scroll Diagnostic Console to bottom on new messages
+  useEffect(() => {
+    if (terminalEndRef.current) {
+      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [terminalLogs])
 
   // Establish WebSocket connection to backend daemon
   useEffect(() => {
@@ -707,14 +716,15 @@ function App() {
             {/* Diagnostic CLI Shell */}
             <div className="flex flex-col gap-2">
               <label className="block text-[10px] font-mono text-muted uppercase">Diagnostic CLI Shell</label>
-              <div className="flex-1 bg-background border border-border rounded-lg p-4 font-mono text-xs flex flex-col justify-between h-80">
-                <div className="flex-1 overflow-y-auto flex flex-col gap-1 text-left text-gray-300">
+              <div className="bg-background border border-border rounded-lg p-4 font-mono text-xs h-80 flex flex-col justify-between">
+                <div className="h-[210px] overflow-y-auto flex flex-col gap-1 text-left text-gray-300 min-h-0">
                   {terminalLogs.map((log, idx) => (
                     <div key={idx} className="leading-relaxed">{log}</div>
                   ))}
+                  <div ref={terminalEndRef} />
                 </div>
                 
-                <div className="flex gap-1.5 mt-4">
+                <div className="flex gap-1.5 mt-2">
                   <input
                     type="text"
                     placeholder="Enter shell command..."
