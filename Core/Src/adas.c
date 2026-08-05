@@ -27,6 +27,15 @@ void ADAS_Init(ADAS_HandleTypeDef *adas)
     adas->left_cm  = 400.0f;
     adas->right_cm = 400.0f;
     adas->ttc_sec  = 99.9f;
+
+    /* Load dynamic config values from defaults */
+    adas->fcw_warn_cm   = ADAS_FCW_WARN_CM;
+    adas->fcw_crit_cm   = ADAS_FCW_CRIT_CM;
+    adas->ttc_warn_s    = ADAS_TTC_WARN_S;
+    adas->ttc_crit_s    = ADAS_TTC_CRIT_S;
+    adas->bsd_dist_cm   = ADAS_BSD_DIST_CM;
+    adas->bsd_speed_kmh = ADAS_BSD_SPEED_KMH;
+    adas->overspeed_kmh = ADAS_OVERSPEED_KMH;
 }
 
 /* ── ADAS_Update — call after HCSR04_ReadAll() ───────────────────── */
@@ -48,10 +57,10 @@ void ADAS_Update(ADAS_HandleTypeDef *adas, EV_HandleTypeDef *ev)
     }
 
     /* Step 3: Forward Collision Warning */
-    uint8_t fcw_crit = (adas->front_cm < ADAS_FCW_CRIT_CM)
-                     || (adas->ttc_sec  < ADAS_TTC_CRIT_S);
-    uint8_t fcw_warn = (adas->front_cm < ADAS_FCW_WARN_CM)
-                     || (adas->ttc_sec  < ADAS_TTC_WARN_S);
+    uint8_t fcw_crit = (adas->front_cm < adas->fcw_crit_cm)
+                     || (adas->ttc_sec  < adas->ttc_crit_s);
+    uint8_t fcw_warn = (adas->front_cm < adas->fcw_warn_cm)
+                     || (adas->ttc_sec  < adas->ttc_warn_s);
 
     if (hyst_check(&adas->hyst_fcw_crit, fcw_crit)) {
         adas->hyst_fcw_warn = 0;        // reset warn counter when crit fires
@@ -63,17 +72,17 @@ void ADAS_Update(ADAS_HandleTypeDef *adas, EV_HandleTypeDef *ev)
     }
 
     /* Step 4: Blind Spot Detection */
-    uint8_t bsd_l = (adas->left_cm  < ADAS_BSD_DIST_CM)
-                  && (ev->speed_kmh  > ADAS_BSD_SPEED_KMH);
-    uint8_t bsd_r = (adas->right_cm < ADAS_BSD_DIST_CM)
-                  && (ev->speed_kmh  > ADAS_BSD_SPEED_KMH);
+    uint8_t bsd_l = (adas->left_cm  < adas->bsd_dist_cm)
+                  && (ev->speed_kmh  > adas->bsd_speed_kmh);
+    uint8_t bsd_r = (adas->right_cm < adas->bsd_dist_cm)
+                  && (ev->speed_kmh  > adas->bsd_speed_kmh);
 
     adas->blindspot_left  = hyst_check(&adas->hyst_bsd_l, bsd_l);
     adas->blindspot_right = hyst_check(&adas->hyst_bsd_r, bsd_r);
 
     /* Step 5: Overspeed */
     adas->overspeed = hyst_check(&adas->hyst_over,
-                       ev->speed_kmh > ADAS_OVERSPEED_KMH);
+                       ev->speed_kmh > adas->overspeed_kmh);
 
 
 

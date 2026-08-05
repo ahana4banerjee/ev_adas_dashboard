@@ -43,6 +43,15 @@ typedef struct {
     uint8_t      hyst_bsd_l;
     uint8_t      hyst_bsd_r;
     uint8_t      hyst_over;
+
+    /* Dynamic safety configuration thresholds */
+    float        fcw_warn_cm;
+    float        fcw_crit_cm;
+    float        ttc_warn_s;
+    float        ttc_crit_s;
+    float        bsd_dist_cm;
+    float        bsd_speed_kmh;
+    float        overspeed_kmh;
 } ADAS_HandleTypeDef;
 
 /* ── API ─────────────────────────────────────────────────────────── */
