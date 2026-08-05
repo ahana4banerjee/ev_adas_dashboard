@@ -1,6 +1,7 @@
 /* Core/Src/uart_shell.c */
 #include "uart_shell.h"
 #include "ultrasonic.h"
+#include "crc16.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -196,6 +197,20 @@ static void process_cmd(char *cmd)
         return;
     }
 
+    /* ── set <parameter> <value> ─────────────────────────────── */
+    if (sscanf(cmd, "set %31s %f", arg1, &fval) == 2) {
+        if      (!strcmp(arg1, "fcw_warn"))   _adas->fcw_warn_cm = fval;
+        else if (!strcmp(arg1, "fcw_crit"))   _adas->fcw_crit_cm = fval;
+        else if (!strcmp(arg1, "bsd_dist"))   _adas->bsd_dist_cm = fval;
+        else if (!strcmp(arg1, "bsd_speed"))  _adas->bsd_speed_kmh = fval;
+        else if (!strcmp(arg1, "overspeed"))  _adas->overspeed_kmh = fval;
+        else if (!strcmp(arg1, "ttc_warn"))   _adas->ttc_warn_s = fval;
+        else if (!strcmp(arg1, "ttc_crit"))   _adas->ttc_crit_s = fval;
+        else { shell_tx("Unknown parameter.\r\n> "); return; }
+        shell_tx("OK\r\n> ");
+        return;
+    }
+
     /* ── status ──────────────────────────────────────────────── */
     if (!strcmp(cmd, "status")) {
         print_status();
@@ -221,6 +236,7 @@ static void process_cmd(char *cmd)
             "  obstacle clear\r\n"
             "  fault inject <motor|soc|col>\r\n"
             "  fault clear\r\n"
+            "  set <fcw_warn|fcw_crit|bsd_dist|bsd_speed|overspeed|ttc_warn|ttc_crit> <val>\r\n"
             "  alarm test\r\n"
             "  status\r\n"
             "  reset\r\n"
@@ -230,6 +246,43 @@ static void process_cmd(char *cmd)
 
     /* unknown */
     shell_tx("Unknown command. Type 'help'\r\n> ");
+}
+
+/* ── Internal: parse and execute structured protocol frame ───────── */
+static void process_frame(char *frame)
+{
+    char *last_comma = strrchr(frame, ',');
+    if (!last_comma) return; // Invalid format
+
+    *last_comma = '\0';
+    char *payload_part = frame;
+    char *crc_part = last_comma + 1;
+
+    // Calculate CRC-16 check over payload
+    uint16_t calc_crc = CRC16_Calculate((const uint8_t*)payload_part, strlen(payload_part));
+    uint16_t rx_crc = (uint16_t)strtol(crc_part, NULL, 16);
+
+    if (calc_crc == rx_crc) {
+        // Scan for the 3rd comma to find the start of the command payload
+        char *p = payload_part;
+        int comma_count = 0;
+        while (*p && comma_count < 3) {
+            if (*p == ',') {
+                comma_count++;
+            }
+            p++;
+        }
+
+        if (comma_count == 3 && *p) {
+            char type = *(p - 2);
+            if (type == 'C') {
+                // Execute command
+                process_cmd(p);
+            }
+        }
+    } else {
+        shell_tx("[ERROR] CRC mismatch in command packet\r\n");
+    }
 }
 
 /* ── Shell_Init ──────────────────────────────────────────────── */
@@ -255,28 +308,49 @@ void Shell_PushByte(uint8_t byte)
 }
 
 /* ── Shell_Process — call every main loop iteration ─────────── */
+static uint8_t _in_frame = 0;
+
 void Shell_Process(void)
 {
     uint8_t byte;
     while (rb_pop(&byte)) {
-
-        /* Echo character back */
-        HAL_UART_Transmit(_huart, &byte, 1, 10);
-
-        if (byte == '\r' || byte == '\n') {
-            if (_cmd_idx > 0) {
-                _cmd[_cmd_idx] = '\0';
-                shell_tx("\r\n");
-                process_cmd(_cmd);
+        if (!_in_frame) {
+            if (byte == '$') {
+                _in_frame = 1;
                 _cmd_idx = 0;
             } else {
-                shell_tx("\r\n> ");
+                /* Human Interactive Mode: Echo char back */
+                HAL_UART_Transmit(_huart, &byte, 1, 10);
+
+                if (byte == '\r' || byte == '\n') {
+                    if (_cmd_idx > 0) {
+                        _cmd[_cmd_idx] = '\0';
+                        shell_tx("\r\n");
+                        process_cmd(_cmd);
+                        _cmd_idx = 0;
+                    } else {
+                        shell_tx("\r\n> ");
+                    }
+                } else if (byte == 0x08 || byte == 0x7F) {
+                    /* Backspace */
+                    if (_cmd_idx > 0) _cmd_idx--;
+                } else if (_cmd_idx < SHELL_CMD_SIZE - 1) {
+                    _cmd[_cmd_idx++] = (char)byte;
+                }
             }
-        } else if (byte == 0x08 || byte == 0x7F) {
-            /* Backspace */
-            if (_cmd_idx > 0) _cmd_idx--;
-        } else if (_cmd_idx < SHELL_CMD_SIZE - 1) {
-            _cmd[_cmd_idx++] = (char)byte;
+        } else {
+            /* Automated Protocol Mode: Buffer silently without echoing */
+            if (byte == '*') {
+                _cmd[_cmd_idx] = '\0';
+                _in_frame = 0;
+                process_frame(_cmd);
+                _cmd_idx = 0;
+            } else if (byte == '$') {
+                // Recovery on framing error
+                _cmd_idx = 0;
+            } else if (_cmd_idx < SHELL_CMD_SIZE - 1) {
+                _cmd[_cmd_idx++] = (char)byte;
+            }
         }
     }
 }
