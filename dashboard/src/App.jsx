@@ -279,7 +279,7 @@ function App() {
       statusHeader={
         <StatusHeader
           connectionStatus={connectionStatus}
-          activeAlarms={getActiveAlarms()}
+          metrics={metrics}
           packetStats={packetStats}
         />
       }
