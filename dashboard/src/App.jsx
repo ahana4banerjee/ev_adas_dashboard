@@ -47,6 +47,15 @@ function App() {
     { time: '15', speed: 72.5, temp: 27.1 }
   ])
 
+  // Replay playback states
+  const [sessions, setSessions] = useState([])
+  const [selectedSessionId, setSelectedSessionId] = useState('')
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0)
+  const [replayIndex, setReplayIndex] = useState(0)
+  const [replayTotal, setReplayTotal] = useState(0)
+  const [replayProgress, setReplayProgress] = useState(0)
+
   // Simulated Web CLI Terminal inputs
   const [terminalInput, setTerminalInput] = useState('')
   const [terminalLogs, setTerminalLogs] = useState([
@@ -85,21 +94,30 @@ function App() {
         // If it's live telemetry, map it to dashboard states
         if (msg.event === 'telemetry') {
           setMetrics(msg.data)
-          setPacketStats(msg.stats || { rate: 10, crcErrors: 0, lostPackets: 0 })
           
-          // Capture timestamp and update the line chart buffer (avoiding duplicates)
-          const timeSec = (msg.data.timestamp / 1000).toFixed(0)
-          setChartHistory(prev => {
-            if (prev.length > 0 && prev[prev.length - 1].time === timeSec) {
-              return prev
-            }
-            const newPoint = {
-              time: timeSec,
-              speed: msg.data.speed,
-              temp: msg.data.temp
-            }
-            return [...prev, newPoint].slice(-45) // Keep a rolling window of 45 seconds
-          })
+          if (msg.is_replay) {
+            setReplayIndex(msg.replay_index)
+            setReplayTotal(msg.replay_total)
+            setReplayProgress(msg.replay_index / (msg.replay_total - 1 || 1))
+          } else {
+            setPacketStats(msg.stats || { rate: 10, crcErrors: 0, lostPackets: 0 })
+            // Capture timestamp and update the line chart buffer (avoiding duplicates)
+            const timeSec = (msg.data.timestamp / 1000).toFixed(0)
+            setChartHistory(prev => {
+              if (prev.length > 0 && prev[prev.length - 1].time === timeSec) {
+                return prev
+              }
+              const newPoint = {
+                time: timeSec,
+                speed: msg.data.speed,
+                temp: msg.data.temp
+              }
+              return [...prev, newPoint].slice(-45) // Keep a rolling window of 45 seconds
+            })
+          }
+        } else if (msg.event === 'replay_finished') {
+          setIsPlaying(false)
+          setTerminalLogs(prev => [...prev, '[REPLAY] Drive playback finished.'])
         } else if (msg.event === 'cmd_ack') {
           setTerminalLogs(prev => [...prev, `[ACK] Command "${msg.data.command}" success: ${msg.data.success}`])
         }
@@ -114,6 +132,72 @@ function App() {
       socket.close()
     }
   }, [])
+
+  // Fetch recorded sessions when swapping to replay view
+  useEffect(() => {
+    if (activeView === 'replay') {
+      fetch('http://localhost:8080/sessions')
+        .then(res => res.json())
+        .then(data => {
+          setSessions(data)
+          if (data.length > 0 && !selectedSessionId) {
+            setSelectedSessionId(data[0].id.toString())
+          }
+        })
+        .catch(err => console.error('Error loading sessions:', err))
+    }
+  }, [activeView])
+
+  const handlePlayReplay = () => {
+    if (!selectedSessionId) return
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      if (!isPlaying) {
+        if (replayIndex > 0 && replayIndex < replayTotal - 1) {
+          ws.send(JSON.stringify({ event: 'replay_control', data: 'resume' }))
+        } else {
+          ws.send(JSON.stringify({ event: 'start_replay', data: { session_id: parseInt(selectedSessionId) } }))
+        }
+        setIsPlaying(true)
+      }
+    }
+  }
+
+  const handlePauseReplay = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'replay_control', data: 'pause' }))
+      setIsPlaying(false)
+    }
+  }
+
+  const handleStopReplay = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'replay_control', data: 'stop' }))
+      setIsPlaying(false)
+      setReplayIndex(0)
+      setReplayProgress(0)
+    }
+  }
+
+  const handleSpeedChange = (newSpeed) => {
+    setPlaybackSpeed(newSpeed)
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'replay_control', data: 'speed', value: parseFloat(newSpeed) }))
+    }
+  }
+
+  const handleTimelineClick = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const pct = Math.max(0.0, Math.min(1.0, x / rect.width))
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'replay_control', data: 'seek', value: pct }))
+    }
+  }
+
+  const handleExportCSV = () => {
+    if (!selectedSessionId) return
+    window.open(`http://localhost:8080/sessions/${selectedSessionId}/export`, '_blank')
+  }
 
   const executeCommand = (cmdStr) => {
     if (!cmdStr.trim()) return
@@ -263,14 +347,30 @@ function App() {
           <div className="bg-background border border-border rounded-lg p-6 flex flex-col gap-6">
             {/* Select dropdown */}
             <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-              <div className="w-full md:w-64">
+              <div className="w-full md:w-64 border-r border-border/10 pr-4">
                 <label className="block text-[10px] font-mono text-muted uppercase mb-1.5">Select DB Session</label>
-                <select className="w-full bg-card border border-border rounded px-3 py-2 text-xs text-white focus:outline-none">
-                  <option value="">No recorded sessions found</option>
-                  <option value="1">Session #001 - ADAS Testing (08/03/2026)</option>
+                <select 
+                  value={selectedSessionId}
+                  onChange={(e) => {
+                    setSelectedSessionId(e.target.value)
+                    handleStopReplay()
+                  }}
+                  className="w-full bg-card border border-border rounded px-3 py-2 text-xs text-white focus:outline-none"
+                >
+                  {sessions.length === 0 ? (
+                    <option value="">No recorded sessions found</option>
+                  ) : (
+                    sessions.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} (#{s.id})</option>
+                    ))
+                  )}
                 </select>
               </div>
-              <button className="bg-secondary/20 border border-secondary/40 text-secondary text-xs font-bold font-mono uppercase px-5 py-2.5 rounded hover:bg-secondary/30 transition-colors">
+              <button 
+                onClick={handleExportCSV}
+                disabled={!selectedSessionId}
+                className="bg-secondary/20 border border-secondary/40 text-secondary disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold font-mono uppercase px-5 py-2.5 rounded hover:bg-secondary/30 transition-colors"
+              >
                 Export Session CSV
               </button>
             </div>
@@ -278,28 +378,59 @@ function App() {
             {/* Replay timeline */}
             <div className="py-4">
               <div className="flex justify-between text-[10px] font-mono text-muted mb-2">
-                <span>TIMELINE TRACK</span>
-                <span>00:00 / 02:30</span>
+                <span>TIMELINE TRACKER</span>
+                <span>PACKET: {replayIndex + 1} / {replayTotal || 1}</span>
               </div>
-              <div className="w-full h-2 bg-card rounded-full relative overflow-hidden cursor-pointer border border-border">
-                <div className="absolute top-0 left-0 h-full bg-secondary w-1/4"></div>
+              <div 
+                onClick={handleTimelineClick}
+                className="w-full h-3.5 bg-card rounded-full relative overflow-hidden cursor-pointer border border-border p-0.5"
+              >
+                <div 
+                  className="h-full bg-secondary rounded-full transition-all duration-100" 
+                  style={{ width: `${replayProgress * 100}%` }}
+                ></div>
               </div>
             </div>
 
             {/* Playback Control Bar */}
             <div className="flex justify-center items-center gap-4">
-              <button className="p-2.5 bg-card border border-border rounded-full text-muted hover:text-white transition-colors">
+              <button 
+                onClick={handleStopReplay}
+                title="Reset Replay"
+                className="p-2.5 bg-card border border-border rounded-full text-muted hover:text-white transition-colors"
+              >
                 <RotateCcw size={16} />
               </button>
-              <button className="p-3.5 bg-primary/10 border border-primary/30 text-primary rounded-full hover:bg-primary/20 transition-colors">
-                <Play size={20} className="fill-primary" />
-              </button>
-              <button className="p-2.5 bg-card border border-border rounded-full text-muted hover:text-white transition-colors">
-                <Pause size={16} />
-              </button>
               
-              <div className="ml-4 font-mono text-xs border border-border bg-card/50 px-3 py-1 rounded">
-                SPEED: <span className="text-secondary font-bold">1.0x</span>
+              {!isPlaying ? (
+                <button 
+                  onClick={handlePlayReplay}
+                  disabled={!selectedSessionId}
+                  className="p-3.5 bg-primary/10 border border-primary/30 text-primary rounded-full hover:bg-primary/20 transition-colors disabled:opacity-40"
+                >
+                  <Play size={20} className="fill-primary" />
+                </button>
+              ) : (
+                <button 
+                  onClick={handlePauseReplay}
+                  className="p-3.5 bg-warning/10 border border-warning/30 text-warning rounded-full hover:bg-warning/20 transition-colors"
+                >
+                  <Pause size={20} className="fill-warning" />
+                </button>
+              )}
+              
+              <div className="ml-4 flex items-center gap-2 font-mono text-xs border border-border bg-card/50 px-3 py-1 rounded">
+                <span>SPEED:</span>
+                <select 
+                  value={playbackSpeed}
+                  onChange={(e) => handleSpeedChange(e.target.value)}
+                  className="bg-transparent text-secondary font-bold focus:outline-none cursor-pointer"
+                >
+                  <option value="0.5">0.5x</option>
+                  <option value="1.0">1.0x</option>
+                  <option value="2.0">2.0x</option>
+                  <option value="4.0">4.0x</option>
+                </select>
               </div>
             </div>
           </div>
