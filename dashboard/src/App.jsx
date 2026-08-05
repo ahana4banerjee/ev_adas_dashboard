@@ -65,9 +65,11 @@ function App() {
 
   // Threshold Configuration states
   const [thresholds, setThresholds] = useState({
-    colDist: 50,
-    maxTemp: 90,
-    bsdSpeedGate: 30,
+    fcwWarn: 50,
+    fcwCrit: 20,
+    bsdDist: 30,
+    overspeed: 120,
+    ttcWarn: 3.0,
     ttcCrit: 1.5
   })
 
@@ -197,6 +199,56 @@ function App() {
   const handleExportCSV = () => {
     if (!selectedSessionId) return
     window.open(`http://localhost:8080/sessions/${selectedSessionId}/export`, '_blank')
+  }
+
+  const handleApplyLimits = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'cli_command', data: `set fcw_warn ${thresholds.fcwWarn}` }))
+      ws.send(JSON.stringify({ event: 'cli_command', data: `set fcw_crit ${thresholds.fcwCrit}` }))
+      ws.send(JSON.stringify({ event: 'cli_command', data: `set bsd_dist ${thresholds.bsdDist}` }))
+      ws.send(JSON.stringify({ event: 'cli_command', data: `set overspeed ${thresholds.overspeed}` }))
+      ws.send(JSON.stringify({ event: 'cli_command', data: `set ttc_warn ${thresholds.ttcWarn}` }))
+      ws.send(JSON.stringify({ event: 'cli_command', data: `set ttc_crit ${thresholds.ttcCrit}` }))
+      setTerminalLogs(prev => [...prev, '[CONFIG] Sent parameter registers to vehicle controller.'])
+    } else {
+      setTerminalLogs(prev => [...prev, '[CONFIG] Sync failed: Serial bridge link offline.'])
+    }
+  }
+
+  const handleInjectFault = (type) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'cli_command', data: `fault inject ${type}` }))
+      setTerminalLogs(prev => [...prev, `[FAULT] Triggered virtual override: ${type.toUpperCase()}`])
+    } else {
+      setTerminalLogs(prev => [...prev, '[FAULT] Injection failed: Serial bridge link offline.'])
+    }
+  }
+
+  const handleClearFaults = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'cli_command', data: 'fault clear' }))
+      setTerminalLogs(prev => [...prev, '[FAULT] Cleared fault registers. Controller returning to NORMAL.'])
+    } else {
+      setTerminalLogs(prev => [...prev, '[FAULT] Reset failed: Serial bridge link offline.'])
+    }
+  }
+
+  const handleObstacleOverride = (val) => {
+    // Optimistic state update for immediate slider feedback
+    setMetrics(prev => ({ ...prev, frontDist: val }))
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'cli_command', data: `obstacle ${val}` }))
+    }
+  }
+
+  const handleObstacleClear = () => {
+    setMetrics(prev => ({ ...prev, frontDist: 400 }))
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'cli_command', data: 'obstacle clear' }))
+      setTerminalLogs(prev => [...prev, '[OVERRIDE] Obstacle override cleared. Real-time range tracking restored.'])
+    } else {
+      setTerminalLogs(prev => [...prev, '[OVERRIDE] Reset failed: Serial bridge link offline.'])
+    }
   }
 
   const executeCommand = (cmdStr) => {
@@ -444,71 +496,184 @@ function App() {
         </div>
       )}
 
-      {/* 3. Safety Thresholds Configuration View */}
+      {/* 3. Safety Parameter & Fault Injection View */}
       {activeView === 'config' && (
-        <div className="bg-card border border-border rounded-xl p-6 w-full max-w-2xl mx-auto">
-          <h2 className="text-lg font-mono font-bold text-white mb-2 uppercase tracking-wider">Safety Parameter Configuration</h2>
-          <p className="text-xs text-muted mb-6">Modify alarm trigger settings and write them to the vehicle controller registers.</p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full max-w-5xl mx-auto text-left">
+          {/* Left Column: Safety Parameter Configuration */}
+          <div className="bg-card border border-border rounded-xl p-6 flex flex-col justify-between">
+            <div>
+              <h2 className="text-base font-mono font-bold text-white mb-1 uppercase tracking-wider">ADAS Safety Parameters</h2>
+              <p className="text-[10px] text-muted mb-4">Modify vehicle safety alarms and sync them to microcontroller registers.</p>
 
-          <div className="flex flex-col gap-6">
-            {/* Input Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-background/40 border border-border rounded-lg p-4">
-                <label className="block text-[10px] font-mono text-muted uppercase mb-1.5">Collision Alert Distance (cm)</label>
-                <input 
-                  type="number" 
-                  value={thresholds.colDist}
-                  onChange={(e) => setThresholds({...thresholds, colDist: parseInt(e.target.value)})}
-                  className="w-full bg-card border border-border rounded px-3 py-2 text-sm text-white font-mono focus:outline-none"
-                />
-              </div>
-              <div className="bg-background/40 border border-border rounded-lg p-4">
-                <label className="block text-[10px] font-mono text-muted uppercase mb-1.5">Overtemperature Threshold (°C)</label>
-                <input 
-                  type="number" 
-                  value={thresholds.maxTemp}
-                  onChange={(e) => setThresholds({...thresholds, maxTemp: parseInt(e.target.value)})}
-                  className="w-full bg-card border border-border rounded px-3 py-2 text-sm text-white font-mono focus:outline-none"
-                />
-              </div>
-              <div className="bg-background/40 border border-border rounded-lg p-4">
-                <label className="block text-[10px] font-mono text-muted uppercase mb-1.5">BSD Speed Gate Minimum (km/h)</label>
-                <input 
-                  type="number" 
-                  value={thresholds.bsdSpeedGate}
-                  onChange={(e) => setThresholds({...thresholds, bsdSpeedGate: parseInt(e.target.value)})}
-                  className="w-full bg-card border border-border rounded px-3 py-2 text-sm text-white font-mono focus:outline-none"
-                />
-              </div>
-              <div className="bg-background/40 border border-border rounded-lg p-4">
-                <label className="block text-[10px] font-mono text-muted uppercase mb-1.5">Critical TTC Threshold (seconds)</label>
-                <input 
-                  type="number" 
-                  step="0.1"
-                  value={thresholds.ttcCrit}
-                  onChange={(e) => setThresholds({...thresholds, ttcCrit: parseFloat(e.target.value)})}
-                  className="w-full bg-card border border-border rounded px-3 py-2 text-sm text-white font-mono focus:outline-none"
-                />
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-background/40 border border-border rounded-lg p-3">
+                    <label className="block text-[9px] font-mono text-muted uppercase mb-1">FCW Warning (cm)</label>
+                    <input 
+                      type="number" 
+                      value={thresholds.fcwWarn}
+                      onChange={(e) => setThresholds({...thresholds, fcwWarn: parseInt(e.target.value) || 0})}
+                      className="w-full bg-card border border-border rounded px-2.5 py-1 text-xs text-white font-mono focus:outline-none"
+                    />
+                  </div>
+                  <div className="bg-background/40 border border-border rounded-lg p-3">
+                    <label className="block text-[9px] font-mono text-muted uppercase mb-1">FCW Critical (cm)</label>
+                    <input 
+                      type="number" 
+                      value={thresholds.fcwCrit}
+                      onChange={(e) => setThresholds({...thresholds, fcwCrit: parseInt(e.target.value) || 0})}
+                      className="w-full bg-card border border-border rounded px-2.5 py-1 text-xs text-white font-mono focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-background/40 border border-border rounded-lg p-3">
+                    <label className="block text-[9px] font-mono text-muted uppercase mb-1">BSD Alert Distance (cm)</label>
+                    <input 
+                      type="number" 
+                      value={thresholds.bsdDist}
+                      onChange={(e) => setThresholds({...thresholds, bsdDist: parseInt(e.target.value) || 0})}
+                      className="w-full bg-card border border-border rounded px-2.5 py-1 text-xs text-white font-mono focus:outline-none"
+                    />
+                  </div>
+                  <div className="bg-background/40 border border-border rounded-lg p-3">
+                    <label className="block text-[9px] font-mono text-muted uppercase mb-1">Overspeed Limit (km/h)</label>
+                    <input 
+                      type="number" 
+                      value={thresholds.overspeed}
+                      onChange={(e) => setThresholds({...thresholds, overspeed: parseInt(e.target.value) || 0})}
+                      className="w-full bg-card border border-border rounded px-2.5 py-1 text-xs text-white font-mono focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-background/40 border border-border rounded-lg p-3">
+                    <label className="block text-[9px] font-mono text-muted uppercase mb-1">TTC Warning (s)</label>
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      value={thresholds.ttcWarn}
+                      onChange={(e) => setThresholds({...thresholds, ttcWarn: parseFloat(e.target.value) || 0})}
+                      className="w-full bg-card border border-border rounded px-2.5 py-1 text-xs text-white font-mono focus:outline-none"
+                    />
+                  </div>
+                  <div className="bg-background/40 border border-border rounded-lg p-3">
+                    <label className="block text-[9px] font-mono text-muted uppercase mb-1">TTC Critical (s)</label>
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      value={thresholds.ttcCrit}
+                      onChange={(e) => setThresholds({...thresholds, ttcCrit: parseFloat(e.target.value) || 0})}
+                      className="w-full bg-card border border-border rounded px-2.5 py-1 text-xs text-white font-mono focus:outline-none"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Warning Alert banner */}
-            <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg text-warning text-xs font-mono flex gap-2">
-              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-              <span>Editing parameters updates volatile dashboard thresholds. Writing parameters to physical flash is locked under administrative credentials.</span>
-            </div>
-
-            {/* Save Buttons */}
-            <div className="flex gap-3 justify-end mt-2">
-              <button className="bg-border text-gray-300 text-xs font-bold font-mono uppercase px-5 py-2.5 rounded hover:bg-border/80 transition-colors">
-                Reset Defaults
+            <div className="flex gap-2 justify-end mt-4 border-t border-border/20 pt-4">
+              <button 
+                onClick={() => {
+                  setThresholds({
+                    fcwWarn: 50,
+                    fcwCrit: 20,
+                    bsdDist: 30,
+                    overspeed: 120,
+                    ttcWarn: 3.0,
+                    ttcCrit: 1.5
+                  });
+                  setTerminalLogs(prev => [...prev, '[CONFIG] Threshold state reset to defaults. Click Sync to apply.']);
+                }}
+                className="bg-card border border-border text-gray-300 text-[10px] font-bold font-mono uppercase px-4 py-2 rounded hover:bg-border/40 transition-colors"
+              >
+                Reset Default
               </button>
               <button 
-                onClick={() => setTerminalLogs(prev => [...prev, `[CONFIG] Safety limits updated locally.`])}
-                className="bg-primary text-background text-xs font-extrabold font-mono uppercase px-5 py-2.5 rounded hover:bg-primary/90 transition-colors"
+                onClick={handleApplyLimits}
+                className="bg-primary text-background text-[10px] font-extrabold font-mono uppercase px-4 py-2 rounded hover:bg-primary/95 transition-colors"
               >
-                Apply Limits
+                Sync Registers
               </button>
+            </div>
+          </div>
+
+          {/* Right Column: Virtual Fault Injection Console */}
+          <div className="bg-card border border-border rounded-xl p-6 flex flex-col justify-between">
+            <div>
+              <h2 className="text-base font-mono font-bold text-white mb-1 uppercase tracking-wider">Fault Injection Console</h2>
+              <p className="text-[10px] text-muted mb-4">Simulate hardware anomalies, sensor failures, and trigger critical overrides.</p>
+
+              <div className="flex flex-col gap-4">
+                {/* Fault Buttons Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={() => handleInjectFault('motor')}
+                    className="flex flex-col items-center justify-center p-3 bg-danger/15 border border-danger/30 rounded-lg hover:bg-danger/25 text-danger transition-all cursor-pointer"
+                  >
+                    <span className="text-xs font-bold font-mono uppercase">Inject Overheat</span>
+                    <span className="text-[8px] opacity-75 font-mono mt-0.5">Force Motor Temp 95°C</span>
+                  </button>
+
+                  <button 
+                    onClick={() => handleInjectFault('soc')}
+                    className="flex flex-col items-center justify-center p-3 bg-danger/15 border border-danger/30 rounded-lg hover:bg-danger/25 text-danger transition-all cursor-pointer"
+                  >
+                    <span className="text-xs font-bold font-mono uppercase">Inject Low SOC</span>
+                    <span className="text-[8px] opacity-75 font-mono mt-0.5">Force Battery SOC 1%</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => handleInjectFault('col')}
+                    className="flex flex-col items-center justify-center p-3 bg-danger/15 border border-danger/30 rounded-lg hover:bg-danger/25 text-danger transition-all cursor-pointer"
+                  >
+                    <span className="text-xs font-bold font-mono uppercase">Inject Collision</span>
+                    <span className="text-[8px] opacity-75 font-mono mt-0.5">Trigger Critical Warn</span>
+                  </button>
+
+                  <button 
+                    onClick={handleClearFaults}
+                    className="flex flex-col items-center justify-center p-3 bg-primary/15 border border-primary/30 rounded-lg hover:bg-primary/25 text-primary transition-all font-bold cursor-pointer"
+                  >
+                    <span className="text-xs font-bold font-mono uppercase">Clear System Faults</span>
+                    <span className="text-[8px] opacity-75 font-mono mt-0.5">Restore normal states</span>
+                  </button>
+                </div>
+
+                {/* Sensor Distance Override */}
+                <div className="bg-background/40 border border-border rounded-lg p-3.5 mt-1 flex flex-col gap-2">
+                  <div className="flex justify-between items-center text-[10px] font-mono text-muted uppercase">
+                    <span>Front Distance Override</span>
+                    <span className="text-secondary font-bold">
+                      {metrics.frontDist < 400 ? `${metrics.frontDist} cm` : 'OFF'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="range" 
+                      min="10" 
+                      max="400" 
+                      value={metrics.frontDist}
+                      onChange={(e) => handleObstacleOverride(parseInt(e.target.value))}
+                      className="flex-1 accent-secondary bg-card h-1.5 rounded-lg appearance-none cursor-pointer border border-border"
+                    />
+                    
+                    <button 
+                      onClick={handleObstacleClear}
+                      className="bg-card border border-border text-[9px] font-mono uppercase px-2 py-1 rounded text-gray-300 hover:bg-border/40 transition-all cursor-pointer"
+                    >
+                      Disable
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Disclaimer */}
+            <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg text-warning text-[9px] font-mono mt-4">
+              WARNING: Injecting virtual anomalies triggers the safety fail-safe mechanism, forcing the vehicle controller into the EMERGENCY SAFE state.
             </div>
           </div>
         </div>
