@@ -57,6 +57,10 @@ void Fault_Clear(Fault_HandleTypeDef *flt, EV_HandleTypeDef *ev)
     ev->motor_temp  = 25.0f;
     ev->soc         = 80.0f;
 
+    /* Clear dynamic simulation locks */
+    ev->override_temp_active = 0;
+    ev->override_soc_active  = 0;
+
     /* Turn off fault LED */
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_RESET);
 }

@@ -46,6 +46,11 @@ void EV_Init(EV_HandleTypeDef *ev)
     ev->motor_temp = 25.0f;    /* ambient */
     ev->speed_kmh = 20;
     ev->state = STATE_PARKED;
+
+    ev->override_temp_active = 0;
+    ev->override_temp_val    = 0.0f;
+    ev->override_soc_active  = 0;
+    ev->override_soc_val     = 0.0f;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -86,12 +91,13 @@ void EV_ReadADC(EV_HandleTypeDef *ev)
                              0.0f, 100.0f);
     ev->brake_pedal = CLAMP((adc_buf[ADC_RANK_BRAKE] / 4095.0f) * 100.0f,
                              0.0f, 100.0f);
-    ev->motor_temp  = CLAMP((adc_buf[ADC_RANK_TEMP]  / 4095.0f) * 120.0f,
-                             0.0f, 120.0f);
 
-    /* PA2 (SOC ADC) is only used on first boot to seed the SOC value.
-       After that, SOC is tracked by energy integration — do NOT overwrite
-       ev->soc from ADC every cycle. */
+    if (ev->override_temp_active) {
+        ev->motor_temp = ev->override_temp_val;
+    } else {
+        ev->motor_temp  = CLAMP((adc_buf[ADC_RANK_TEMP]  / 4095.0f) * 120.0f,
+                                 0.0f, 120.0f);
+    }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -172,12 +178,15 @@ void EV_Update(EV_HandleTypeDef *ev, float dt)
         ev->power_kw = p_mech_kw + p_loss_kw;
 
         /* ── 5. SOC integration ───────────────────────────────────────────────── */
-
-        float delta_soc = (ev->power_kw * dt)
-                          / (EV_BATTERY_CAPACITY_KWH * 3600.0f)
-                          * 100.0f
-                          * EV_SIM_SCALE;
-        ev->soc = CLAMP(ev->soc - delta_soc, 0.0f, 100.0f);
+        if (ev->override_soc_active) {
+            ev->soc = ev->override_soc_val;
+        } else {
+            float delta_soc = (ev->power_kw * dt)
+                              / (EV_BATTERY_CAPACITY_KWH * 3600.0f)
+                              * 100.0f
+                              * EV_SIM_SCALE;
+            ev->soc = CLAMP(ev->soc - delta_soc, 0.0f, 100.0f);
+        }
 
         /* ── 6. Estimated range ───────────────────────────────────────────────── */
         float eff_whpkm = (ev->drive_mode == DRIVE_MODE_ECO)
@@ -188,10 +197,14 @@ void EV_Update(EV_HandleTypeDef *ev, float dt)
         ev->range_km = remaining_wh / eff_whpkm;
 
         /* ── 7. Motor thermal model (simple warm-up/cool-down) ───────────────── */
-        float thermal_power = fabsf(ev->power_kw) * 0.05f;  /* 5 % loss = heat */
-        float cooling       = (ev->motor_temp - 25.0f) * 0.01f;
-        ev->motor_temp += (thermal_power - cooling) * dt;
-        ev->motor_temp  = CLAMP(ev->motor_temp, 25.0f, 130.0f);
+        if (ev->override_temp_active) {
+            ev->motor_temp = ev->override_temp_val;
+        } else {
+            float thermal_power = fabsf(ev->power_kw) * 0.05f;  /* 5 % loss = heat */
+            float cooling       = (ev->motor_temp - 25.0f) * 0.01f;
+            ev->motor_temp += (thermal_power - cooling) * dt;
+            ev->motor_temp  = CLAMP(ev->motor_temp, 25.0f, 130.0f);
+        }
 
 
 }
@@ -211,10 +224,22 @@ void EV_InjectSpeed(EV_HandleTypeDef *ev, float speed_kmh)
 
 void EV_InjectSOC(EV_HandleTypeDef *ev, float soc_pct)
 {
-    ev->soc = CLAMP(soc_pct, 0.0f, 100.0f);
+    if (soc_pct < 0.0f) {
+        ev->override_soc_active = 0;
+    } else {
+        ev->override_soc_active = 1;
+        ev->override_soc_val    = CLAMP(soc_pct, 0.0f, 100.0f);
+        ev->soc                 = ev->override_soc_val;
+    }
 }
 
 void EV_InjectMotorTemp(EV_HandleTypeDef *ev, float temp_c)
 {
-    ev->motor_temp = CLAMP(temp_c, 0.0f, 130.0f);
+    if (temp_c < 0.0f) {
+        ev->override_temp_active = 0;
+    } else {
+        ev->override_temp_active = 1;
+        ev->override_temp_val    = CLAMP(temp_c, 0.0f, 130.0f);
+        ev->motor_temp           = ev->override_temp_val;
+    }
 }

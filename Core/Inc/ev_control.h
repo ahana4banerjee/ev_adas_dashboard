@@ -28,6 +28,12 @@ typedef struct {
     float   range_km;       /* estimated range        */
     uint8_t drive_mode;     /* ECO / NORMAL / SPORT   */
     VehicleState_t state;
+
+    /* Dynamic overrides for fault injection testing */
+    uint8_t  override_temp_active;
+    float    override_temp_val;
+    uint8_t  override_soc_active;
+    float    override_soc_val;
 } EV_HandleTypeDef;
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
