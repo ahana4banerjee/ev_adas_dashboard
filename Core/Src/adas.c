@@ -1,5 +1,6 @@
 #include "adas.h"
 #include "ultrasonic.h"
+#include "alarm_manager.h"
 
 /* ── Hysteresis helper ───────────────────────────────────────────── */
 /* Returns 1 if alarm is active, 0 if cleared after hysteresis       */
@@ -93,6 +94,33 @@ void ADAS_Update(ADAS_HandleTypeDef *adas, EV_HandleTypeDef *ev)
           || adas->blindspot_right
           || adas->overspeed)           adas->alarm_priority = ALARM_ADVISORY;
     else                                adas->alarm_priority = ALARM_NONE;
+
+    /* Route active warnings directly to the alarm manager alert queues */
+    if (adas->collision_warn == 2) {
+        AlarmManager_SetAlert(ALERT_FCW, ALARM_CRITICAL);
+    } else if (adas->collision_warn == 1) {
+        AlarmManager_SetAlert(ALERT_FCW, ALARM_WARNING);
+    } else {
+        AlarmManager_ClearAlert(ALERT_FCW);
+    }
+
+    if (adas->blindspot_left) {
+        AlarmManager_SetAlert(ALERT_BSD_L, ALARM_ADVISORY);
+    } else {
+        AlarmManager_ClearAlert(ALERT_BSD_L);
+    }
+
+    if (adas->blindspot_right) {
+        AlarmManager_SetAlert(ALERT_BSD_R, ALARM_ADVISORY);
+    } else {
+        AlarmManager_ClearAlert(ALERT_BSD_R);
+    }
+
+    if (adas->overspeed) {
+        AlarmManager_SetAlert(ALERT_OVERSPEED, ALARM_ADVISORY);
+    } else {
+        AlarmManager_ClearAlert(ALERT_OVERSPEED);
+    }
 
     /* Step 8: Drive LEDs */
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,   /* LED_COLLISION */

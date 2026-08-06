@@ -1,5 +1,6 @@
 #include "fault.h"
 #include "ultrasonic.h"
+#include "alarm_manager.h"
 
 extern TIM_HandleTypeDef htim1;
 
@@ -30,15 +31,17 @@ void Fault_Check(Fault_HandleTypeDef *flt,
     {
         flt->active = 1;
         ev->state    = STATE_FAULT;   // ← add this
-
-        //__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
+        
+        AlarmManager_SetAlert(ALERT_FAULT, ALARM_CRITICAL);
 
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_SET);
     }
     else
     {
         flt->active = 0;
-        ev->state =STATE_DRIVING;
+        ev->state = STATE_DRIVING;
+
+        AlarmManager_ClearAlert(ALERT_FAULT);
 
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_RESET);
     }
@@ -50,6 +53,8 @@ void Fault_Clear(Fault_HandleTypeDef *flt, EV_HandleTypeDef *ev)
     flt->active = 0;
 
     ev->state = STATE_PARKED;
+    
+    AlarmManager_ClearAlert(ALERT_FAULT);
 
     /* Reset EV to safe state */
     ev->speed_kmh   = 0.0f;
