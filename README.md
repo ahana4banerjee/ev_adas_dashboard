@@ -5,6 +5,11 @@
 [![Backend](https://img.shields.io/badge/Bridge-FastAPI%20%7C%20WebSockets%20%7C%20SQLite-green.svg)](https://fastapi.tiangolo.com/)
 [![Frontend](https://img.shields.io/badge/Cockpit-React%2019%20%7C%20Vite%20%7C%20TailwindCSS-cyan.svg)](https://vitejs.dev/)
 [![Firmware Status](https://img.shields.io/badge/Version%202%20Phase%202-COMPLETED-brightgreen.svg)]()
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel%20NOC%20Cockpit-success?logo=vercel)](https://ev-adas-dashboard.vercel.app/)
+
+> [!NOTE]
+> **Live Web Demo**: Access the deployed dashboard here: **[https://ev-adas-dashboard.vercel.app/](https://ev-adas-dashboard.vercel.app/)**  
+> *Note: This online deployment connects the React NOC frontend to a cloud-hosted FastAPI gateway running in **Demo Mode** with mock telemetry generation. The complete Hardware-in-the-Loop (HIL) stack—including the STM32F103 bare-metal C firmware, PICSimLab emulator, TIM1 PWM hardware buzzer, and physical/virtual serial COM ports—runs locally.*
 
 An advanced, simulation-first **Automotive Network Operations Center (NOC) and Electronic Control Unit (ECU) Software Platform**. The system models full-vehicle traction dynamics, advanced driver-assistance safety systems (ADAS), priority-queued audible alerting, ISO/SAE diagnostic trouble codes (DTC) with freeze-frame capture, flash non-volatile memory persistence, and a 48-byte SLIP-encoded binary telemetry pipeline streaming from an ARM Cortex-M3 microcontroller to a real-time web telemetry cockpit.
 
