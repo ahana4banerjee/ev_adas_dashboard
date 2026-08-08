@@ -226,6 +226,16 @@ function App() {
     }
   }
 
+  const handleSetDriveMode = (mode) => {
+    setMetrics(prev => ({ ...prev, driveMode: mode.toUpperCase() }))
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'cli_command', data: `mode ${mode.toLowerCase()}` }))
+      setTerminalLogs(prev => [...prev, `[COMMAND] Setting drive mode: ${mode.toUpperCase()}`])
+    } else {
+      setTerminalLogs(prev => [...prev, '[COMMAND] Mode switch failed: Serial bridge link offline.'])
+    }
+  }
+
   const handleInjectFault = (type) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ event: 'cli_command', data: `fault inject ${type}` }))
@@ -413,10 +423,29 @@ function App() {
                   <MetricGauge value={metrics.torque} min={0} max={100} title="Motor Torque" unit="Nm" color="#3b82f6" />
                 </div>
                 
-                <div className="w-full flex justify-around px-4 border-t border-border/40 pt-4 mt-2">
-                  <div className="text-center">
-                    <div className="text-sm font-bold text-gray-300">{metrics.driveMode}</div>
-                    <div className="text-[9px] font-mono text-muted uppercase">Drive Mode</div>
+                <div className="w-full flex flex-col items-center px-4 border-t border-border/40 pt-3 mt-2">
+                  <div className="text-[9px] font-mono text-muted uppercase tracking-wider mb-2">Drive Mode Control</div>
+                  <div className="flex gap-2 w-full justify-center">
+                    {['ECO', 'NORMAL', 'SPORT'].map((m) => {
+                      const isActive = (metrics.driveMode || '').toUpperCase() === m
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => handleSetDriveMode(m)}
+                          className={`flex-1 py-1.5 px-3 rounded text-xs font-mono font-bold transition-all cursor-pointer ${
+                            isActive
+                              ? m === 'ECO'
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-sm shadow-emerald-500/20'
+                                : m === 'SPORT'
+                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 shadow-sm shadow-amber-500/20'
+                                : 'bg-primary/20 text-primary border border-primary/50 shadow-sm shadow-primary/20'
+                              : 'bg-background/40 text-gray-400 border border-border/60 hover:bg-border/40 hover:text-white'
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
@@ -650,6 +679,32 @@ function App() {
                     <span className="text-xs font-bold font-mono uppercase">Clear System Faults</span>
                     <span className="text-[8px] opacity-75 font-mono mt-0.5">Restore normal states</span>
                   </button>
+                </div>
+
+                {/* Drive Mode Quick Switcher */}
+                <div className="bg-background/40 border border-border rounded-lg p-3 mt-1 flex flex-col gap-2">
+                  <div className="flex justify-between items-center text-[10px] font-mono text-muted uppercase">
+                    <span>Drive Mode Switcher</span>
+                    <span className="text-primary font-bold">{metrics.driveMode}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    {['ECO', 'NORMAL', 'SPORT'].map((m) => {
+                      const isActive = (metrics.driveMode || '').toUpperCase() === m
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => handleSetDriveMode(m)}
+                          className={`flex-1 py-1.5 px-2 rounded text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                            isActive
+                              ? 'bg-primary text-background'
+                              : 'bg-card border border-border text-gray-300 hover:bg-border/40'
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {/* Sensor Distance Override */}
