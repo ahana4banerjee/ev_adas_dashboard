@@ -33,6 +33,10 @@
 #include "alarm_manager.h"
 #include "event_manager.h"
 #include "dtc_manager.h"
+#include "dal_adc.h"
+#include "dal_timer.h"
+#include "dal_uart.h"
+#include "dal_flash.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -141,6 +145,10 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim3);
   HAL_TIM_Base_Start(&htim2);
 
+  /* Initialize Driver Abstraction Layer (DAL) wrappers */
+  DAL_ADC_Init(&hadc1);
+  DAL_Timer_Init(&htim1, TIM_CHANNEL_1, &htim2);
+  DAL_UART_Init(&huart1);
   HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 
   HCSR04_Init();
@@ -254,7 +262,7 @@ static void Print_Status(void)
 	char final_frame[220];
 	sprintf(final_frame, "$%s,%04X*\n", payload, crc);
 
-	HAL_UART_Transmit(&huart1, (uint8_t*)final_frame, strlen(final_frame), 100);
+	DAL_UART_TransmitString(final_frame);
 }
 /**
   * @brief System Clock Configuration
