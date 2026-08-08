@@ -246,36 +246,73 @@ class SerialManager:
             time.sleep(0.1)
 
     def _run_serial(self):
+        rx_buf = bytearray()
+        slip_end_byte = 0xC0
+
         while self.running:
             try:
                 logger.info(f"Opening serial port {self.port} at {self.baud} baud...")
-                self.serial_conn = serial.Serial(self.port, self.baud, timeout=1.0)
+                self.serial_conn = serial.Serial(self.port, self.baud, timeout=0.1)
                 logger.info(f"Serial port {self.port} opened successfully.")
                 
                 self.serial_conn.reset_input_buffer()
                 self.serial_conn.reset_output_buffer()
+                rx_buf.clear()
 
                 while self.running and self.serial_conn.is_open:
                     if self.serial_conn.in_waiting > 0:
-                        line_bytes = self.serial_conn.readline()
-                        try:
-                            line = line_bytes.decode('ascii', errors='ignore').strip()
-                            if line:
-                                parsed = self.parser.parse_frame(line)
-                                if parsed:
-                                    parsed["raw"] = line
-                                    if self.on_packet_received:
+                        incoming = self.serial_conn.read(self.serial_conn.in_waiting)
+                        rx_buf.extend(incoming)
+
+                        # Process SLIP binary packets delimited by 0xC0
+                        while slip_end_byte in rx_buf:
+                            start_idx = rx_buf.find(slip_end_byte)
+                            # Route any leading text chunk before SLIP start to CLI console
+                            if start_idx > 0:
+                                text_chunk = bytes(rx_buf[:start_idx])
+                                rx_buf = rx_buf[start_idx:]
+                                try:
+                                    text_line = text_chunk.decode('ascii', errors='ignore').strip()
+                                    if text_line and self.on_packet_received:
+                                        self.on_packet_received({"event": "cli_log", "data": text_line})
+                                except Exception:
+                                    pass
+
+                            # Drop consecutive 0xC0 boundary bytes
+                            while len(rx_buf) > 1 and rx_buf[1] == slip_end_byte:
+                                rx_buf.pop(0)
+
+                            end_idx = rx_buf.find(slip_end_byte, 1)
+                            if end_idx != -1:
+                                packet_bytes = bytes(rx_buf[:end_idx + 1])
+                                rx_buf = rx_buf[end_idx + 1:]
+
+                                parsed = self.parser.parse_binary_frame(packet_bytes)
+                                if parsed and self.on_packet_received:
+                                    parsed["raw"] = f"<SLIP {len(packet_bytes)}B>"
+                                    self.on_packet_received(parsed)
+                            else:
+                                # Partial frame, wait for next serial bytes
+                                break
+
+                        # Process any trailing ASCII text lines if no binary SLIP is pending
+                        if b'\n' in rx_buf and slip_end_byte not in rx_buf:
+                            newline_idx = rx_buf.find(b'\n')
+                            line_bytes = bytes(rx_buf[:newline_idx + 1])
+                            rx_buf = rx_buf[newline_idx + 1:]
+                            try:
+                                line = line_bytes.decode('ascii', errors='ignore').strip()
+                                if line and self.on_packet_received:
+                                    parsed = self.parser.parse_frame(line)
+                                    if parsed:
+                                        parsed["raw"] = line
                                         self.on_packet_received(parsed)
-                                else:
-                                    if self.on_packet_received:
-                                        self.on_packet_received({
-                                            "event": "cli_log",
-                                            "data": line
-                                        })
-                        except Exception as parse_ex:
-                            logger.error(f"Error decoding raw bytes: {parse_ex}")
+                                    else:
+                                        self.on_packet_received({"event": "cli_log", "data": line})
+                            except Exception:
+                                pass
                     else:
-                        time.sleep(0.01)
+                        time.sleep(0.005)
                         
             except serial.SerialException as se:
                 logger.error(f"Serial interface error: {se}. Re-scanning in 2 seconds...")

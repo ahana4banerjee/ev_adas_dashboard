@@ -38,6 +38,7 @@
 #include "dal_uart.h"
 #include "dal_flash.h"
 #include "config_manager.h"
+#include "telemetry_encoder.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -241,52 +242,34 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 static void Print_Status(void)
 {
 	static uint32_t seq_id = 0;
-	uint32_t timestamp = HAL_GetTick();
+	TelemetryPacket_t pkt;
+	memset(&pkt, 0, sizeof(pkt));
 
-	int spd_whole = (int)ev.speed_kmh;
-	int spd_frac = (int)(ev.speed_kmh * 10.0f) % 10;
-	if (spd_frac < 0) spd_frac = -spd_frac;
+	pkt.timestamp       = HAL_GetTick();
+	pkt.seq_id          = seq_id++;
+	pkt.speed_kmh       = ev.speed_kmh;
+	pkt.soc_pct         = ev.soc;
+	pkt.motor_torque    = (int16_t)ev.motor_torque;
+	pkt.motor_temp_c    = ev.motor_temp;
+	pkt.range_km        = (uint16_t)ev.range_km;
+	pkt.accel_pedal     = (uint8_t)ev.accel_pedal;
+	pkt.brake_pedal     = (uint8_t)ev.brake_pedal;
+	pkt.front_cm        = (uint16_t)adas.front_cm;
+	pkt.left_cm         = (uint16_t)adas.left_cm;
+	pkt.right_cm        = (uint16_t)adas.right_cm;
+	pkt.ttc_sec         = adas.ttc_sec;
+	pkt.collision_warn  = adas.collision_warn;
+	pkt.blindspot_left  = adas.blindspot_left;
+	pkt.blindspot_right = adas.blindspot_right;
+	pkt.alarm_priority  = (uint8_t)adas.alarm_priority;
+	pkt.fault_flags     = flt.flags;
+	pkt.drive_mode      = (uint8_t)ev.drive_mode;
 
-	int soc_whole = (int)ev.soc;
-	int soc_frac = (int)(ev.soc * 10.0f) % 10;
-	if (soc_frac < 0) soc_frac = -soc_frac;
-
-	int temp_whole = (int)ev.motor_temp;
-	int temp_frac = (int)(ev.motor_temp * 10.0f) % 10;
-	if (temp_frac < 0) temp_frac = -temp_frac;
-
-	int ttc_whole = (int)adas.ttc_sec;
-	int ttc_frac = (int)(adas.ttc_sec * 10.0f) % 10;
-	if (ttc_frac < 0) ttc_frac = -ttc_frac;
-
-	char payload[180];
-	sprintf(payload, "%lu,%lu,D,%d.%d,%d.%d,%d,%d.%d,%d,%d,%d,%d,%d,%d,%d.%d,%d,%d,%d,%d,%02X,%d",
-			(unsigned long)timestamp,
-			(unsigned long)seq_id++,
-			spd_whole, spd_frac,
-			soc_whole, soc_frac,
-			(int)ev.motor_torque,
-			temp_whole, temp_frac,
-			(int)ev.range_km,
-			(int)ev.accel_pedal,
-			(int)ev.brake_pedal,
-			(int)adas.front_cm,
-			(int)adas.left_cm,
-			(int)adas.right_cm,
-			ttc_whole, ttc_frac,
-			adas.collision_warn,
-			adas.blindspot_left,
-			adas.blindspot_right,
-			(int)adas.alarm_priority,
-			flt.flags,
-			(int)ev.drive_mode);
-
-	uint16_t crc = CRC16_Calculate((uint8_t*)payload, strlen(payload));
-
-	char final_frame[220];
-	sprintf(final_frame, "$%s,%04X*\n", payload, crc);
-
-	DAL_UART_TransmitString(final_frame);
+	uint8_t tx_buf[128];
+	uint16_t tx_len = Telemetry_EncodePacket(&pkt, tx_buf, sizeof(tx_buf));
+	if (tx_len > 0) {
+		DAL_UART_Transmit(tx_buf, tx_len);
+	}
 }
 /**
   * @brief System Clock Configuration
