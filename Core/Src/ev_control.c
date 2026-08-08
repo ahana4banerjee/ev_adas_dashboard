@@ -17,6 +17,7 @@
 
 #include "ev_control.h"
 #include "event_manager.h"
+#include "dal_adc.h"
 #include <stdio.h>
 
 /* ─── Drive-mode torque scaling table ────────────────────────────────────── */
@@ -55,50 +56,19 @@ void EV_Init(EV_HandleTypeDef *ev)
     ev->override_soc_val     = 0.0f;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-uint16_t Read_ADC_Channel(uint32_t channel)
-{
-  ADC_ChannelConfTypeDef sConfig = {0};
-
-  sConfig.Channel = channel;
-  sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_71CYCLES_5;
-
-  HAL_ADC_ConfigChannel(&hadc1, &sConfig);
-
-  HAL_ADC_Start(&hadc1);
-
-  HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-
-  return HAL_ADC_GetValue(&hadc1);
-}
-
 /**
- * @brief  Read four ADC channels (polling DMA-filled buffer) and map to
- *         pedal/temp values.  Call once per EV_Update cycle.
- *
- *  Conversion:
- *    pedal_pct  = (adc / 4095.0) × 100.0
- *    temp_c     = (adc / 4095.0) × 120.0   (NTC linearised, 0–120 °C)
+ * @brief  Read ADC channels via Driver Abstraction Layer and map to
+ *         pedal/temp values. Call once per EV_Update cycle.
  */
 void EV_ReadADC(EV_HandleTypeDef *ev)
 {
-    /* Start ADC conversion (all 4 channels, scan mode) */
-
-	adc_buf[ADC_RANK_ACCEL] = Read_ADC_Channel(ADC_CHANNEL_0);
-	adc_buf[ADC_RANK_BRAKE] = Read_ADC_Channel(ADC_CHANNEL_1);
-	adc_buf[ADC_RANK_TEMP]  = Read_ADC_Channel(ADC_CHANNEL_3);
-
-    ev->accel_pedal = CLAMP((adc_buf[ADC_RANK_ACCEL] / 4095.0f) * 100.0f,
-                             0.0f, 100.0f);
-    ev->brake_pedal = CLAMP((adc_buf[ADC_RANK_BRAKE] / 4095.0f) * 100.0f,
-                             0.0f, 100.0f);
+    ev->accel_pedal = DAL_ADC_ReadPercent(DAL_ADC_ACCEL);
+    ev->brake_pedal = DAL_ADC_ReadPercent(DAL_ADC_BRAKE);
 
     if (ev->override_temp_active) {
         ev->motor_temp = ev->override_temp_val;
     } else {
-        ev->motor_temp  = CLAMP((adc_buf[ADC_RANK_TEMP]  / 4095.0f) * 120.0f,
-                                 0.0f, 120.0f);
+        ev->motor_temp = DAL_ADC_ReadTemperature();
     }
 }
 
