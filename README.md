@@ -1,499 +1,456 @@
-# EV ADAS Dashboard & HIL Simulator
+# EV ADAS Dashboard & Automotive Embedded Platform
 
-[![Board: STM32F103C8T6](https://img.shields.io/badge/Board-STM32F103C8T6_Blue_Pill-blue.svg)](https://www.st.com/en/microcontrollers-microprocessors/stm32f103c8.html)
-[![Framework: STM32 HAL](https://img.shields.io/badge/Framework-STM32_HAL-red.svg)](https://www.st.com/en/embedded-software/stm32cube-mcu-mpu-packages.html)
-[![Simulator: PICSimLab](https://img.shields.io/badge/Simulation-PICSimLab-green.svg)](https://lcgamboa.github.io/picsimlab/)
+[![Platform](https://img.shields.io/badge/Target-STM32F103C8T6%20(ARM%20Cortex--M3)-blue.svg)](https://www.st.com/en/microcontrollers-microprocessors/stm32f103c8.html)
+[![Simulation](https://img.shields.io/badge/Simulation-PICSimLab%20HIL-orange.svg)](https://lcgamboa.github.io/picsimlab/)
+[![Backend](https://img.shields.io/badge/Bridge-FastAPI%20%7C%20WebSockets%20%7C%20SQLite-green.svg)](https://fastapi.tiangolo.com/)
+[![Frontend](https://img.shields.io/badge/Cockpit-React%2019%20%7C%20Vite%20%7C%20TailwindCSS-cyan.svg)](https://vitejs.dev/)
+[![Firmware Status](https://img.shields.io/badge/Version%202%20Phase%202-COMPLETED-brightgreen.svg)]()
 
-A complete hardware-in-the-loop (HIL) style simulation of an Electric Vehicle (EV) Dashboard integrated with Advanced Driver Assistance Systems (ADAS). The project features a modular STM32 firmware stack executing on an ARM Cortex-M3 (Blue Pill) that calculates vehicle dynamics, manages safety-critical ADAS alerts, monitors system faults, and streams real-time telemetry over UART.
+An advanced, simulation-first **Automotive Network Operations Center (NOC) and Electronic Control Unit (ECU) Software Platform**. The system models full-vehicle traction dynamics, advanced driver-assistance safety systems (ADAS), priority-queued audible alerting, ISO/SAE diagnostic trouble codes (DTC) with freeze-frame capture, flash non-volatile memory persistence, and a 48-byte SLIP-encoded binary telemetry pipeline streaming from an ARM Cortex-M3 microcontroller to a real-time web telemetry cockpit.
 
-This repository covers two primary versions of the system:
-1.  **Version 1 (Internship Baseline)**: Single-threaded Python Matplotlib GUI parsing space-separated tags.
-2.  **Version 2 & 2.1 (Production Web telematics & Alarm System)**: Multi-client FastAPI gateway, SQLite WAL database, Vite + React interface, and a physical TIM1-based warning buzzer.
-
----
-
-## Table of Contents
-
-- [Project Overview](#project-overview)
-- [Problem Statement](#problem-statement)
-- [Key Features](#key-features)
-- [Technology Stack](#technology-stack)
-- [System Architecture](#system-architecture)
-- [Firmware Architecture](#firmware-architecture)
-- [Python Dashboard Architecture](#python-dashboard-architecture)
-- [Complete Data Flow](#complete-data-flow)
-- [Project Workflow](#project-workflow)
-- [Hardware & Pin Mapping](#hardware--pin-mapping)
-- [Software Prerequisites](#software-prerequisites)
-- [Project Structure](#project-structure)
-- [Core Functionalities](#core-functionalities)
-  - [Vehicle Dynamics Engine](#vehicle-dynamics-engine)
-  - [ADAS Alert System](#adas-alert-system)
-  - [Fault Diagnosis & Safe State](#fault-diagnosis--safe-state)
-  - [UART Diagnostic Shell](#uart-diagnostic-shell)
-- [Vehicle State Machine](#vehicle-state-machine)
-- [Telemetry Protocol](#telemetry-protocol)
-- [How to Build & Run](#how-to-build--run)
-- [Future Improvements](#future-improvements)
-- [Learning Outcomes](#learning-outcomes)
-- [Acknowledgements](#acknowledgements)
+```
++----------------------------------------------------------------------------------------------------------------------+
+|                                              EV ADAS PLATFORM EVOLUTION                                              |
+|                                                                                                                      |
+|  [V1: Simulated Base]  ===>  [V2 P1: Web NOC & Protocol]  ===>  [V2 P2: Embedded Platform]  ===>  [V3: Multi-ECU]    |
+|   - Bare-Metal Loop           - WebSocket Bridge                - TIM1 PWM Hardware Buzzer      - FreeRTOS Preemption|
+|   - 1Hz UART ASCII            - React / Vite UI                 - Modular Alarm Manager         - Virtual CAN Bus    |
+|   - Matplotlib GUI            - SQLite Logs & Replay            - Binary SLIP Protocol (48B)    - Multi-Node ECUs    |
+|   (COMPLETED)                 (COMPLETED)                       (COMPLETED)                     (PLANNED)            |
++----------------------------------------------------------------------------------------------------------------------+
+```
 
 ---
 
 ## Project Overview
 
-This repository demonstrates a virtualized, local implementation of a modern EV control unit and instrument cluster dashboard. Rather than relying on physical vehicle hardware, the project uses the **PICSimLab** simulator to run STM32 firmware that reads analog sensor inputs (simulated via potentiometers) and ultrasonic sensor echo signals. 
+Modern electric vehicles are software-defined, safety-critical computers. Developing and verifying automotive software requires end-to-end integration across low-level peripheral drivers, real-time safety supervisors, high-frequency telematics streams, and remote diagnostic gateways.
 
-The STM32 firmware calculates core traction metrics—such as speed, motor torque, instantaneous power, battery State-of-Charge (SOC), and estimated range—while simultaneously processing raw echoes from three simulated HC-SR04 sensors. This data is checked against collision, blind-spot, and parking thresholds, and streamed over a virtual COM port (115200 baud UART) to a live Python dashboard.
+This platform bridges embedded firmware engineering and full-stack cloud-edge telematics using a **Hardware-in-the-Loop (HIL) simulation methodology**:
+1. **STM32 Bare-Metal Firmware**: Runs on an ARM Cortex-M3 (STM32F103C8T6 emulated in PICSimLab), executing physics models, sensor fusion, alarm priority arbitration, DTC freeze-frame captures, and Flash NVM persistence.
+2. **Deterministic Safety Path**: The hardware audible buzzer is driven directly by on-chip timer PWM (`TIM1_CH1` on `PA8`), operating autonomously with sub-10ms response times independent of the web dashboard.
+3. **Telemetry & Gateway Bridge**: A Python FastAPI daemon buffers serial packets, verifies CRC-16 checksums, logs historical drives into SQLite WAL databases, and broadcasts telemetry to clients via WebSockets.
+4. **Automotive Web NOC Dashboard**: A React 19 + Vite dashboard featuring bird's-eye radar vector visualization, real-time dials, rolling telemetry charts, trip replay (with seek & variable playback speed), and an interactive serial diagnostic CLI.
 
 ---
 
-## Problem Statement
+## Why This Project Exists
 
-Developing firmware for electric vehicles and ADAS algorithms typically requires expensive test rigs, CAN bus interfaces, and physical sensor mockups. In educational and prototype environments, this creates a high barrier to entry. 
-
-This project addresses this issue by providing a complete, localized development and simulation environment. By combining an ARM Cortex-M3 microcontroller emulation (Blue Pill) with PICSimLab, firmware engineers can develop, debug, and verify safety-critical algorithms (such as Time-to-Collision calculations, sensor hysteresis filtering, and fault-induced safe state entries) without using physical vehicle platforms.
+Testing automotive embedded systems on physical test benches is expensive and hardware-constrained. This project provides a **100% simulation-first, repeatable automotive software testbed** that allows embedded engineers to:
+* Develop and profile hard real-time vehicle control loops and safety supervisors without physical vehicle hardware.
+* Stress-test emergency braking (AEB), forward collision warnings (FCW), and blind-spot detection (BSD) using simulated ultrasonic distance streams.
+* Verify flash memory durability, power-cut recovery, and diagnostic freeze-frame captures.
+* Analyze protocol efficiency by comparing ASCII CSV telematics against packed binary SLIP framing.
 
 ---
 
 ## Key Features
 
-### Version 1 (Internship Baseline)
-- **Real-Time EV Dynamics**: Evaluates motor torque, speed (Euler integration of mass and drag), power consumption, battery SOC, and remaining range.
-- **Integrated ADAS Suite**: 
-  - *Forward Collision Warning (FCW)* based on raw distance and calculated Time-To-Collision (TTC).
-  - *Blind Spot Detection (BSD)* mapped to left and right sensors with speed gates.
-  - *Parking Assist* with proximity alarms.
-- **Safety-Critical Fault Manager**: Monitors motor temperature, critical battery depletion, and collision hazards to trip a virtual contactor and transition the vehicle into a **Safe State**.
-- **Interactive UART Shell**: A ring-buffered diagnostic shell allowing developers to inject faults, override speed/SOC metrics, set drive modes (ECO/NORMAL/SPORT), and clear latched faults.
-- **Multitasking Scheduler**: A time-triggered scheduler executing modules at 10ms (100Hz) and 100ms (10Hz) frequencies using hardware timers.
-- **Live GUI Dashboard**: Multi-pane Python window featuring circular gauges, history trend plots, and an interactive bird's-eye view showing surrounding obstacles.
+### 1. EV Traction Dynamics & Power Train
+* **Physics Engine**: Euler-integrated vehicle kinematics modeling accelerator torque demand, regenerative braking, aerodynamic drag ($F_{drag} = \frac{1}{2} \rho C_d A v^2$), and rolling resistance.
+* **Energy & Range Estimation**: Coulomb-counting State-of-Charge (SOC) integration with battery depletion and dynamic range estimation.
+* **Drive Profiles**: Selectable runtime driving modes:
+  * **ECO**: 60% torque scaling for maximum range efficiency.
+  * **NORMAL**: 100% standard torque response.
+  * **SPORT**: 130% boost curve for rapid acceleration.
 
-### Version 2  (Production Web Telematics & Buzzer Extensions)
-- **Vite + React UI Dashboard**: Multi-view frontend providing circular telematics widgets, scrolling history lines, a detailed bird's-eye lane canvas with vector sports car models, active braking tail-light indicators, and session replay scrubbers.
-- **FastAPI Serial Bridge Server**: Gateway managing serial COM link handles, SQLite database logging with Write-Ahead Logging (WAL) threads, and JSON packet broadcasts to multiple WebSocket clients.
-- **CRC-16-CCITT Integrity Check**: Appends mathematical validation flags to comma-separated ASCII streams to secure communications.
-- **Firmware ADC Override Locks**: Latches fault flags on user console overrides, blocking loop dynamics from instantly overwriting simulated overheat or SOC failures.
-- **Hardware Warning Buzzer Subsystem**: Directly ticks a decoupled PWM driver on **`TIM1_CH1`** (Pin **`PA8`**) to generate prioritized frequencies ($1.2\text{ kHz}$ advisory warning chirps vs. $2.5\text{ kHz}$ critical safety sirens).
+### 2. Advanced Driver Assistance Systems (ADAS)
+* **Forward Collision Warning (FCW)**: Dynamic obstacle distance tracking with 3-stage severity (Nominal, Warning $< 50\text{ cm}$, Critical $< 20\text{ cm}$).
+* **Time-to-Collision (TTC)**: Real-time velocity vector calculation ($\text{TTC} = \frac{d_{front}}{v_{rel}}$) triggering emergency warnings if $\text{TTC} < 3.0\text{ s}$ or critical alarms if $\text{TTC} < 1.5\text{ s}$.
+* **Blind Spot Detection (BSD)**: Velocity-gated ($> 20\text{ km/h}$) lateral ultrasonic proximity tracking.
+* **Hysteresis Filtering**: 3-sample debounce counters preventing alarm chatter near threshold boundaries.
 
----
+### 3. Independent Hardware Safety & Audible Alerting
+* **PWM Tone Generation**: Driven by STM32 Timer 1 (`TIM1_CH1` on pin `PA8`), generating distinct tone profiles:
+  * **Advisory**: Single $1.2\text{ kHz}$ chirp (150ms ON).
+  * **Warning**: $1.2\text{ kHz}$ pulsed tone (200ms ON / 800ms OFF).
+  * **Critical Alarm**: $2.5\text{ kHz}$ urgent siren (100ms ON / 100ms OFF).
+* **Modular Alarm Manager**: Multi-channel priority arbiter ensuring safety-critical shutdown alarms (`ALERT_FAULT`) immediately suppress lower-priority warnings (`ALERT_FCW`, `ALERT_BSD`, `ALERT_OVERSPEED`).
+* **Hardware Isolation**: Alarm arbitration and tone generation run entirely inside STM32 firmware; safety alerts function even if the serial link or web cockpit disconnects.
 
-## Technology Stack
+### 4. Automotive Diagnostics & Event Framework
+* **Standardized DTC Registry**: Maps system failures to ISO/SAE diagnostic trouble codes:
+  * `P0A80`: Motor Over-Temperature Limit Exceeded ($> 80^\circ\text{C}$).
+  * `P0210`: Battery State of Charge Critically Low ($< 5\%$).
+  * `C1C00`: Forward Collision Critical Safety Breach ($< 20\text{ cm}$).
+  * `C1A00`: Blind Spot Lateral Hazard Detected.
+* **Freeze-Frame Capture**: Automatically snapshots dynamic metrics (speed, SOC, motor temp, torque, timestamp) at the exact millisecond a fault transitions to active.
+* **Event Manager**: Thread-safe circular event queue capturing timestamped state transitions (`INFO`, `WARNING`, `CRITICAL`) and flushing them over UART.
+* **CLI Diagnostic Shell**: Interactive terminal supporting `dtc read`, `dtc clear`, `config read`, `config reset`, `status`, `mode`, and virtual fault injection (`fault inject motor|soc|col`).
 
-### Version 1 (Internship Baseline)
-| Component | Technology | Role |
-|---|---|---|
-| **Core Microcontroller** | STM32F103C8T6 (Blue Pill) | Main controller executing dynamics, ADAS, and diagnostics. |
-| **Firmware Framework** | STM32 HAL (Hardware Abstraction Layer) | Pin configuration, ADC conversions, UART communication, and Timers. |
-| **Development IDE** | STM32CubeIDE / GCC compiler | Code development, static analysis, and binary compilation. |
-| **Hardware Simulator** | PICSimLab (Board: GPBoard/STM32) | Microcontroller, sensor, potentiometer, and LED emulator. |
-| **Serial Bus** | UART / USART1 (115200, 8N1) | Microcontroller-to-PC telemetry stream and diagnostic RX shell. |
-| **Dashboard Front-End**| Python 3 (Matplotlib, PySerial) | Telemetry parsing, live gauge rendering, and graphic UI thread. |
+### 5. Flash NVM Configuration Manager
+* **Persistent Storage**: Allocates on-chip Flash Page 63 (`0x0800FC00`) for non-volatile parameter persistence.
+* **Validation Signature**: Structured with `CONFIG_MAGIC = 0x45564346` ("EVCF"), schema versioning, and byte-parity checksum verification.
+* **Runtime Calibration**: Allows on-the-fly adjustment of safety thresholds (`fcw_warn`, `fcw_crit`, `ttc_warn`, `bsd_dist`, `overspeed`) via CLI or Web UI that persist across MCU power cycles and resets.
+* **Failsafe Recovery**: Automatic detection of blank or corrupted flash pages with automatic fallback to factory defaults.
 
-### Version 2  (Web Diagnostics Platform)
-| Component | Technology | Role |
-|---|---|---|
-| **Audible Alarm** | Passive Buzzer + TIM1 PWM | Emits physical safety alarm frequencies ($1.2\text{ kHz}$ / $2.5\text{ kHz}$). |
-| **Gateway Bridge** | Python FastAPI + PySerial | Decodes checksummed packets, serves REST routes, and broadcasts WS logs. |
-| **Logging DB** | SQLite WAL (Write-Ahead Logging)| Writes and retrieves telemetry data records. |
-| **Web Dashboard** | React + Vite + Tailwind CSS | Renders SVG gauges, scrolling charts, road lanes, and CLI inputs. |
+### 6. 48-Byte SLIP Binary Telemetry Protocol
+* **Bandwidth Optimization**: Replaces heavy ASCII strings with a 48-byte packed C struct (`#pragma pack(push, 1)`).
+* **Frame Delimitation**: Uses standard Serial Line Internet Protocol (SLIP, `0xC0`) with byte-escaping (`0xDB 0xDC`, `0xDB 0xDD`).
+* **Integrity Validation**: CRC-16-CCITT (`0x1021`, init `0xFFFF`) calculated over payload bytes prior to transmission.
+* **Dual-Mode Reception**: Python gateway seamlessly unpacks high-rate binary frames at 20Hz while routing interleaved ASCII diagnostic logs to the web terminal.
 
 ---
 
 ## System Architecture
 
-### Version 1 (Matplotlib Interface)
 ```mermaid
-graph TD
-    subgraph PICSimLab [PICSimLab Simulator]
-        POT_ACC["Pot PA0: Accelerator"]
-        POT_BRK["Pot PA1: Brake"]
-        POT_TMP["Pot PA3: Motor Temp"]
-        US_FRONT["Echo PB1: Front Sensor"]
-        US_LEFT["Echo PB3: Left Sensor"]
-        US_RIGHT["Echo PB5: Right Sensor"]
-        LEDS["LEDs PB8-PB11: Alerts"]
+flowchart TB
+    subgraph HIL_Simulation ["PICSimLab HIL Simulation"]
+        STM32["STM32F103C8T6 MCU"]
+        POT_ACCEL["PA0: Accel Potentiometer"]
+        POT_BRAKE["PA1: Brake Potentiometer"]
+        POT_TEMP["PA3: Motor Temp Potentiometer"]
+        SONAR_F["PB0/PB1: Front HC-SR04"]
+        SONAR_L["PB2/PB3: Left HC-SR04"]
+        SONAR_R["PB4/PB5: Right HC-SR04"]
+        BUZZER_PIN["PA8: TIM1 CH1 PWM Output"]
+        HW_BUZZER["Passive Buzzer (Hardware Siren)"]
+
+        POT_ACCEL -->|ADC1 CH0| STM32
+        POT_BRAKE -->|ADC1 CH1| STM32
+        POT_TEMP  -->|ADC1 CH3| STM32
+        SONAR_F & SONAR_L & SONAR_R -->|Echo Capture| STM32
+        STM32 -->|PWM Audio Tones| BUZZER_PIN --> HW_BUZZER
     end
 
-    subgraph STM32F103C8 [STM32F103C8 Microcontroller]
-        FW_ADC[ADC Driver]
-        FW_US[Ultrasonic Driver]
-        FW_CORE["EV & ADAS Logic Engine"]
-        FW_UART["UART ISR & Ring Buffer"]
+    subgraph Firmware_Architecture ["STM32 Modular Firmware Architecture"]
+        SCHED["Cooperative Scheduler (TIM1 10ms / TIM3 100ms)"]
+        DAL["Driver Abstraction Layer (ADC, Timer/PWM, UART, Flash)"]
+        EV_CORE["EV Dynamics & Battery Model"]
+        ADAS_CORE["ADAS Ranging & TTC Fusion"]
+        FLT_CORE["Safety Fault Supervisor"]
+        ALARM_MGR["Modular Alarm Manager (Priority Engine)"]
+        DTC_MGR["DTC & Freeze-Frame Registry"]
+        CFG_MGR["NVM Flash Configuration Manager"]
+        SLIP_ENC["SLIP Binary Protocol Encoder"]
+
+        SCHED --> EV_CORE & ADAS_CORE & FLT_CORE
+        EV_CORE & ADAS_CORE --> DAL
+        FLT_CORE & ADAS_CORE -->|Trigger Alerts| ALARM_MGR
+        ALARM_MGR -->|Frequency & Duty| DAL
+        FLT_CORE -->|Capture Freeze Frame| DTC_MGR
+        CFG_MGR -->|Read/Write Page 63| DAL
+        SCHED -->|100ms Stream| SLIP_ENC -->|48B Frames| DAL
     end
 
-    subgraph HostPC [Host PC]
-        PY_READER[PySerial Reader Thread]
-        PY_STATE[Shared State Cache]
-        PY_GUI[Matplotlib GUI Loop]
+    subgraph Gateway ["Telemetry Bridge & Daemon"]
+        VCOM["Virtual Serial COM Port (115200 8N1)"]
+        PY_BRIDGE["FastAPI Telemetry Daemon"]
+        PARSER["Binary SLIP Decoder & CRC-16 Validator"]
+        SQLITE[("SQLite WAL Database (telemetry.db)")]
+        WS_SERVER["WebSocket Server (:8080/ws)"]
+
+        DAL -->|UART TX| VCOM --> PY_BRIDGE
+        PY_BRIDGE --> PARSER
+        PARSER -->|Log Frames| SQLITE
+        PARSER -->|Broadcast 20Hz JSON| WS_SERVER
+        WS_SERVER -->|CLI Commands| VCOM
     end
 
-    POT_ACC & POT_BRK & POT_TMP --> FW_ADC
-    US_FRONT & US_LEFT & US_RIGHT --> FW_US
-    FW_ADC & FW_US --> FW_CORE
-    FW_CORE --> LEDS
-    FW_CORE -->|TX Stream| FW_UART
-    FW_UART -->|COM Port Link| PY_READER
-    PY_READER --> PY_STATE --> PY_GUI
-```
+    subgraph NOC_Cockpit ["React 19 Web NOC Cockpit"]
+        UI_MAIN["Dashboard Layout"]
+        RADAR_CANVAS["Bird's-Eye Vector Radar Canvas"]
+        DIALS["Real-Time Speed & SOC Dials"]
+        CHARTS["Historical Telemetry Trend Charts"]
+        CLI_CONSOLE["Web CLI Diagnostic Shell"]
+        DTC_CARDS["DTC & Freeze Frame Visualizer"]
+        REPLAY_BAR["Trip Replay Controller (Seek & Speed)"]
 
-### Version 2  (FastAPI & Web Interface)
-```mermaid
-graph TD
-    subgraph STM32F103C8 [STM32 C Firmware]
-        FW_ADAS[ADAS.c] -->|Priority Mappings| FW_BUZZ[buzzer.c Driver]
-        FW_BUZZ -->|TIM1 CH1 PWM| BZ_AUDIO["PA8: Passive Buzzer"]
-        FW_UART2["USART1 Serial Engine"]
+        WS_SERVER <-->|Bi-Directional WebSocket| UI_MAIN
+        UI_MAIN --> RADAR_CANVAS & DIALS & CHARTS & CLI_CONSOLE & DTC_CARDS & REPLAY_BAR
     end
-
-    subgraph HostPC_Services [Host PC Telemetry Bridge]
-        PY_GTW["FastAPI gateway (bridge.py)"] <==>|COM Port link| FW_UART2
-        PY_DB[(SQLite WAL Database)] <-->|Save Logs| PY_GTW
-        PY_GTW <==>|WebSockets / JSON| React_UI["React Web Dashboard (App.jsx)"]
-    end
-```
-
----
-
-## Firmware Architecture
-
-```mermaid
-graph TD
-    subgraph Driver_Layer [Low-Level Drivers & HAL]
-        HAL_Init[HAL Core]
-        ADC_Poll[Regular ADC Channels]
-        TIM_Ticks["Timer Interrupts: TIM1 & TIM3"]
-        TIM2_US["Microsecond Timer: TIM2"]
-        UART_IT["UART Interrupt-driven RX/TX"]
-    end
-
-    subgraph Middleware_Layer [System Scheduler & Drivers]
-        Sched[Time-Triggered Scheduler]
-        US_Driver[Ultrasonic Echo Driver]
-        Shell_RB[Ring Buffer Manager]
-        Buzzer_Driver[Buzzer PWM Driver]
-    end
-
-    subgraph Application_Layer [Business Logic]
-        EV_Dyn[EV Dynamics Engine]
-        ADAS_Eng[ADAS Safety Engine]
-        Fault_Mgr[Diagnostic Fault Manager]
-        Shell_Cmd[Interactive Diagnostic Shell]
-    end
-
-    %% Timing links
-    TIM_Ticks -->|10ms and 100ms flags| Sched
-    TIM2_US -->|us Delays and Rollovers| US_Driver
-    
-    %% Input flow
-    ADC_Poll -->|Read Accel, Brake and Temp| EV_Dyn
-    US_Driver -->|Read Front, Left and Right distances| ADAS_Eng
-
-    %% Execution loops
-    Sched -->|Executes 100Hz| EV_Dyn
-    Sched -->|Executes 10Hz| ADAS_Eng
-    Sched -->|Executes 10Hz| Fault_Mgr
-    Sched -->|Process Rx Ring Buffer| Shell_Cmd
-    Sched -->|10ms Tick Pattern Updates| Buzzer_Driver
-    
-    %% Interactions
-    EV_Dyn -->|Speed and Pedals| ADAS_Eng
-    EV_Dyn & ADAS_Eng -->|States and Alerts| Fault_Mgr
-    Fault_Mgr -->|Safe State Contactor and LEDs| EV_Dyn
-    
-    %% Diagnostics
-    UART_IT -->|Rx Bytes| Shell_RB
-    Shell_RB -->|ASCII lines| Shell_Cmd
-    Shell_Cmd -->|Override states| EV_Dyn
-    Shell_Cmd -->|Override obstacles| ADAS_Eng
-    Shell_Cmd -->|Clear faults| Fault_Mgr
 ```
 
 ---
 
-## Python Dashboard Architecture
+## Version Evolution
 
-```mermaid
-graph TD
-    subgraph Data_Reception ["I/O Thread"]
-        Ser_Conn["Serial Port Connection"]
-        Line_Reader["ASCII Line Reader"]
-        Regex_Parser["Regex Extraction Engine"]
-    end
+| Version | Status | Architectural Contribution | Key Technologies |
+| :--- | :---: | :--- | :--- |
+| **Version 1** | **COMPLETED** | Initial bare-metal baseline with cooperative scheduler, basic EV dynamics, 3-channel ultrasonic ranging, contactor safety trip, and Matplotlib serial plotter. | C (STM32 HAL), PICSimLab, Python Matplotlib |
+| **Version 2 – Phase 1** | **COMPLETED** | Modern Web NOC dashboard, high-throughput serial-to-WebSocket bridge, SQLite WAL session recording, trip playback engine with variable seeking, and CRC-16 verified ASCII framing. | React 19, Vite, Tailwind CSS, FastAPI, SQLite, WebSockets |
+| **Version 2 – Phase 2** | **COMPLETED** | Hardware buzzer PWM audio alerts on `PA8`, modular alarm priority arbiter, event logging queue, standard DTC freeze-frame registry, Driver Abstraction Layer (DAL), Flash Page 63 configuration persistence, and 48-byte SLIP binary telematics. | Embedded C, Flash NVM, SLIP Framing, CRC-16, React Diagnostic Console |
+| **Version 3** | **PLANNED** | Multi-node distributed architecture with FreeRTOS preemptive scheduling, virtual CAN Bus (ISO 11898), ISO 14229 (UDS) diagnostics, and 3D WebGL Digital Twin visualization. | FreeRTOS, Virtual CAN (SocketCAN), UDS / ISO 14229, Three.js |
 
-    subgraph Data_Storage ["Shared Context"]
-        State_Dict["Shared State Dictionary"]
-        Trend_Queue["Speed History Deque 60-elements"]
-    end
+---
 
-    subgraph Presentation_Layer ["Main Thread UI"]
-        Anim_Loop["Matplotlib FuncAnimation Loop"]
-        Gauge_Spd["Speedometer Dial"]
-        Gauge_Bat["Battery SOC Bar & Mode Info"]
-        Trend_Chart["60-second Speed Graph"]
-        Info_Panel["Text Metrics & Diagnostic Fault Flags"]
-        ADAS_BEV["Birds-Eye Obstacle Visualizer"]
-    end
+## Technology Stack
 
-    Ser_Conn -->|Raw String lines| Line_Reader
-    Line_Reader -->|Parse SPD, SOC and F, L, R frames| Regex_Parser
-    Regex_Parser -->|Write values| State_Dict
-    Regex_Parser -->|Append speed| Trend_Queue
+### Embedded Firmware
+| Component | Technology / Implementation | Details |
+| :--- | :--- | :--- |
+| **Microcontroller** | STM32F103C8T6 (ARM Cortex-M3 @ 72 MHz) | Emulated in PICSimLab HIL Environment |
+| **Core Libraries** | STM32Cube HAL + Custom Driver Abstraction Layer | Low-level hardware decoupling |
+| **Scheduler** | Multi-Rate Cooperative Scheduler | TIM1 (10ms EV loop) & TIM3 (100ms ADAS loop) |
+| **Audible Alerting**| Hardware Timer PWM (`TIM1_CH1` on `PA8`) | 1.2 kHz Advisory/Warning, 2.5 kHz Critical Siren |
+| **Non-Volatile Storage** | On-Chip Flash Memory (Page 63 @ `0x0800FC00`) | 1 KB parameter persistence with CRC validation |
+| **Communication** | USART1 (115200 Baud, 8N1) | SLIP Binary Telemetry + ASCII Shell Multiplexing |
 
-    State_Dict & Trend_Queue -->|Read Frame State| Anim_Loop
-    Anim_Loop -->|Draw dial| Gauge_Spd
-    Anim_Loop -->|Draw bar| Gauge_Bat
-    Anim_Loop -->|Plot line| Trend_Chart
-    Anim_Loop -->|Print metrics| Info_Panel
-    Anim_Loop -->|Draw ego and obstacle box| ADAS_BEV
+### Gateway & Telemetry Bridge
+| Component | Technology | Role |
+| :--- | :--- | :--- |
+| **Web Framework** | Python 3.10+ / FastAPI / Uvicorn | Asynchronous Gateway Daemon |
+| **Serial Engine** | PySerial with thread-safe ring buffering | High-rate serial I/O and frame parsing |
+| **Database** | SQLite3 with Write-Ahead Logging (WAL) | Persistent drive cycle session logging |
+| **Network Bus** | WebSockets (`ws://localhost:8080/ws`) | 20Hz full-duplex telemetry and CLI pipeline |
+
+### Frontend Diagnostics Cockpit
+| Component | Technology | Role |
+| :--- | :--- | :--- |
+| **Framework** | React 19 + Vite | High-performance SPA frontend |
+| **Styling** | Tailwind CSS + Lucide Icons | NOC-style dark theme dashboard |
+| **Visualizations** | Custom HTML5 Canvas + Recharts | 2D vector radar vehicle & scrolling time-series |
+| **Diagnostics** | Custom CLI Shell & DTC Card Grid | Remote ECU inspection and parameter tuning |
+
+---
+
+## Hardware & Simulation Pin Mapping
+
+```
+                         STM32F103C8T6 (Blue Pill)
+                              +--------------+
+            Pot: Accelerator -| PA0      PB0 |- HC-SR04: Front Trigger
+                  Pot: Brake -| PA1      PB1 |- HC-SR04: Front Echo
+                              | PA2      PB2 |- HC-SR04: Left Trigger
+            Pot: Motor Temp  -| PA3      PB3 |- HC-SR04: Left Echo
+                              | PA4      PB4 |- HC-SR04: Right Trigger
+                              | PA5      PB5 |- HC-SR04: Right Echo
+                              | PA6      PB6 |- [Reserved]
+                              | PA7      PB7 |- [Reserved]
+          Buzzer PWM (TIM1)  -| PA8      PB8 |- LED: Collision Warning
+             USART1 TX (Bridge)-| PA9      PB9 |- LED: Blind-Spot Left
+           USART1 RX (Bridge)-| PA10    PB10 |- LED: Blind-Spot Right
+                              | PA11    PB11 |- LED: Motor Contactor Trip
+                              | PA12    PB12 |- [Reserved]
+                              +--------------+
 ```
 
 ---
 
-## Complete Data Flow
+## Telemetry Protocol Specification
+
+The platform utilizes a **48-byte packed binary telemetry structure** framed via Serial Line Internet Protocol (SLIP) with CRC-16 integrity verification:
+
+### Binary Packet Structure (`TelemetryPacket_t`)
+```text
++--------+--------+--------+--------+--------+--------+--------+--------+--------+--------+
+| Offset | Field           | Type   | Size   | Units  | Range           | Description     |
++--------+--------+--------+--------+--------+--------+--------+--------+--------+--------+
+| 0x00   | magic           | uint16 | 2 B    | -      | 0xAA55          | Sync Marker     |
+| 0x02   | version         | uint8  | 1 B    | -      | 1               | Protocol Rev    |
+| 0x03   | type            | uint8  | 1 B    | -      | 'D' (0x44)      | Frame Type      |
+| 0x04   | timestamp       | uint32 | 4 B    | ms     | 0 – 2^32-1      | MCU Uptime      |
+| 0x08   | seq_id          | uint32 | 4 B    | -      | 0 – 2^32-1      | Rolling Counter |
+| 0x0C   | speed_kmh       | float  | 4 B    | km/h   | 0.0 – 160.0     | Vehicle Speed   |
+| 0x10   | soc_pct         | float  | 4 B    | %      | 0.0 – 100.0     | Battery SOC     |
+| 0x14   | motor_torque    | int16  | 2 B    | Nm     | -150 – +300     | Torque Demand   |
+| 0x16   | motor_temp_c    | float  | 4 B    | °C     | 0.0 – 120.0     | Motor Temp      |
+| 0x1A   | range_km        | uint16 | 2 B    | km     | 0 – 500         | Estimated Range |
+| 0x1C   | accel_pedal     | uint8  | 1 B    | %      | 0 – 100         | Accelerator Pos |
+| 0x1D   | brake_pedal     | uint8  | 1 B    | %      | 0 – 100         | Brake Pos       |
+| 0x1E   | front_cm        | uint16 | 2 B    | cm     | 2 – 400         | Front Obstacle  |
+| 0x20   | left_cm         | uint16 | 2 B    | cm     | 2 – 400         | Left Obstacle   |
+| 0x22   | right_cm        | uint16 | 2 B    | cm     | 2 – 400         | Right Obstacle  |
+| 0x24   | ttc_sec         | float  | 4 B    | s      | 0.0 – 99.9      | Time-to-Collide |
+| 0x28   | collision_warn  | uint8  | 1 B    | enum   | 0=None, 1=W, 2=C | FCW State       |
+| 0x29   | blindspot_left  | uint8  | 1 B    | bool   | 0=Clear, 1=Alert| Left BSD Flag   |
+| 0x2A   | blindspot_right | uint8  | 1 B    | bool   | 0=Clear, 1=Alert| Right BSD Flag  |
+| 0x2B   | alarm_priority  | uint8  | 1 B    | enum   | 0–3             | Alert Priority  |
+| 0x2C   | fault_flags     | uint8  | 1 B    | mask   | 0x01/0x02/0x04  | Latching Faults |
+| 0x2D   | drive_mode      | uint8  | 1 B    | enum   | 0=ECO, 1=N, 2=S  | Drive Mode      |
+| 0x2E   | crc16           | uint16 | 2 B    | hex    | 0x0000 – 0xFFFF | CRC-16 Checksum |
++--------+--------+--------+--------+--------+--------+--------+--------+--------+--------+
+Total Struct Payload: 48 Bytes
+```
+
+### SLIP Framing & Escaping
+* **Frame Boundary**: Every binary frame is bounded by `SLIP_END = 0xC0`.
+* **Byte Escaping**:
+  * Any byte equal to `0xC0` is encoded as `0xDB 0xDC`.
+  * Any byte equal to `0xDB` is encoded as `0xDB 0xDD`.
+
+---
+
+## Diagnostics & Trouble Code Architecture
 
 ```mermaid
-graph LR
-    User["Driver Pedals"] -->|PA0 and PA1 Potentiometers| STM32_ADC["STM32 ADC Channels"]
-    STM32_ADC -->|Mapped Percentages| EV_Dynamics["EV Dynamics Update"]
+flowchart TD
+    SENSORS["Sensor / Dynamics Monitoring"] --> FAULT_CHK["Fault_Check() @ 100ms"]
     
-    Obstacles["Obstacles"] -->|HC-SR04 Echoes PB1, PB3, PB5| STM32_US["Ultrasonic Driver"]
-    STM32_US -->|Distances in cm| ADAS_Engine["ADAS Engine"]
+    FAULT_CHK -->|Motor Temp > 80°C| FLT_OT["FAULT_OT (0x01)"]
+    FAULT_CHK -->|Battery SOC < 5%| FLT_SOC["FAULT_SOC (0x02)"]
+    FAULT_CHK -->|Distance < 20cm| FLT_COL["FAULT_COL (0x04)"]
+
+    FLT_OT -->|Log DTC| DTC_OT["P0A80: Motor Overheat"]
+    FLT_SOC -->|Log DTC| DTC_SOC["P0210: Battery Low"]
+    FLT_COL -->|Log DTC| DTC_COL["C1C00: Collision Hazard"]
+
+    DTC_OT & DTC_SOC & DTC_COL --> FREEZE["Freeze-Frame Snapshot (Speed, SOC, Temp, Torque, Timestamp)"]
+    FREEZE --> DTC_REG["DTC Manager Ring Buffer (RAM)"]
     
-    EV_Dynamics -->|Speed and Torque| ADAS_Engine
-    ADAS_Engine -->|TTC Calculations| ADAS_Engine
+    DTC_REG -->|CLI: dtc read| SHELL["UART Diagnostic CLI"]
+    DTC_REG -->|Live Sync| UI_COL3["Dashboard 3rd Column DTC Inspector"]
     
-    EV_Dynamics & ADAS_Engine -->|Temp, SOC and Warnings| Fault_Manager["Fault Manager"]
-    Fault_Manager -->|Contactor and Safe State Trigger| EV_Dynamics
-    
-    EV_Dynamics & ADAS_Engine & Fault_Manager -->|Core Telemetry variables| UART_Tx["UART Telemetry Transmit"]
-    
-    UART_Tx -->|ASCII stream over USB-UART| Py_Parser["Python Serial Parser"]
-    Py_Parser -->|Matplotlib UI Update| Live_GUI["Live Visual Gauges"]
+    FAULT_CHK -->|Active Fault| ALARM["AlarmManager: ALERT_FAULT -> CRITICAL"]
+    ALARM -->|PWM 2.5 kHz Siren| BUZZER["Hardware Buzzer (PA8)"]
 ```
 
 ---
 
-## Project Workflow
+## Quick Start & Execution Guide
 
-The following sequence describes the system's start-to-finish execution:
-
-1. **System Initialization**:
-   - The STM32 boots up, configures system clocks to 72 MHz, and initializes GPIO, ADC, Timers (TIM1, TIM2, TIM3, TIM4), and USART1.
-   - Core handles (`ev`, `adas`, `flt`) are configured to default variables (vehicle is in `STATE_PARKED`, battery is initialized to 100% SOC).
-   - Interrupts are enabled for TIM1 (10ms period base), TIM3 (100ms period base), and UART RX (single-byte circular buffering).
-2. **Foreground Executive Loop (Cooperative Scheduling)**:
-   - **Every 10ms (TIM1 Tick)**: Microcontroller scans the ADC channels (Accelerator pedal, Brake pedal, and Motor Temperature) and updates vehicle speed and battery SOC. It also ticks the active buzzer pattern handler.
-   - **Every 100ms (TIM3 Tick)**: Firmware triggers and reads the front, left, and right ultrasonic sensors sequentially, updates ADAS warnings (TTC/Blind spots), checks for diagnostic faults, and executes the interactive UART shell.
-3. **Telemetry Streaming**:
-   - Every 1000ms (10 ticks of the EV loop), the system compiles two diagnostic ASCII frames detailing vehicle dynamics and ADAS states, and transmits them over UART.
-4. **Dashboard Ingestion & UI Loop**:
-   - The Python script reads the virtual COM port asynchronously.
-   - Incoming lines are evaluated using regular expressions. Parsed telemetry is written to a shared state dictionary.
-   - Every 100ms, Matplotlib refreshes the UI frame, displaying dials, historical speed curves, and warning flags.
+### Prerequisites
+* **STM32CubeIDE** (or `arm-none-eabi-gcc` + `make`)
+* **PICSimLab** (v0.9.0+ with STM32F103C8 emulated board)
+* **Python 3.10+** (with `pip` and virtual environment support)
+* **Node.js 18+** & `npm`
+* **com0com** (or physical USB-UART adapter for COM port loopback)
 
 ---
 
-## Hardware & Pin Mapping
-
-The physical microcontroller configuration uses the standard STM32 Blue Pill layout:
-
-| Pin | Function | Peripheral | Simulated Device | Direction |
-|---|---|---|---|---|
-| **PA0** | Accelerator Input | ADC1_CH0 | Potentiometer | Input (Analog) |
-| **PA1** | Brake Input | ADC1_CH1 | Potentiometer | Input (Analog) |
-| **PA3** | Motor Temperature | ADC1_CH3 | Potentiometer | Input (Analog) |
-| **PA8** | Buzzer Alert Output | TIM1_CH1 | Passive Alarm Buzzer | Output (PWM) |
-| **PB0** | Trig: Front Sensor | GPIO | HC-SR04 Front Trig | Output (Digital) |
-| **PB1** | Echo: Front Sensor | GPIO | HC-SR04 Front Echo | Input (Digital) |
-| **PB2** | Trig: Left Sensor | GPIO | HC-SR04 Left Trig | Output (Digital) |
-| **PB3** | Echo: Left Sensor | GPIO | HC-SR04 Left Echo | Input (Digital) |
-| **PB4** | Trig: Right Sensor | GPIO | HC-SR04 Right Trig | Output (Digital) |
-| **PB5** | Echo: Right Sensor | GPIO | HC-SR04 Right Echo | Input (Digital) |
-| **PA9** | USART1 TX | USART1 | UART-to-USB Bridge | Output (Serial) |
-| **PA10**| USART1 RX | USART1 | UART-to-USB Bridge | Input (Serial) |
-| **PB8** | Collision Alert LED| GPIO | Red Warning LED | Output (Digital) |
-| **PB9** | BSD Left Warning LED| GPIO | Amber LED | Output (Digital) |
-| **PB10**| BSD Right Warning LED| GPIO | Amber LED | Output (Digital) |
-| **PB11**| Contactor / Fault LED| GPIO | System Contactor LED | Output (Digital) |
+### Step 1: Compile & Run STM32 Firmware in PICSimLab
+1. Open **STM32CubeIDE** and import the project root (`d:\Projects\Internship\Emertxe\ev_dash`).
+2. Build the project (**`Ctrl + B`**) to generate `Debug/ev_dash.hex`.
+3. Open **PICSimLab**:
+   * Select Board: **Blue Pill (STM32F103C8T6)**.
+   * Go to **Modules** $\rightarrow$ Configure Serial Port to **COM2** (115200 baud).
+   * Go to **File** $\rightarrow$ **Load Hex** $\rightarrow$ Select `Debug/ev_dash.hex`.
+   * The MCU will boot, initialize peripherals, and begin broadcasting telemetry frames.
 
 ---
 
-## Software Prerequisites
+### Step 2: Launch Telemetry Bridge Gateway
+```bash
+# Navigate to telemetry bridge directory
+cd telemetry_bridge
 
-To run this simulation, install the following software packages:
+# Create and activate virtual environment
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
 
-- **STM32CubeIDE**: Recommended IDE for compiling and flashing the STM32F103C8T6 firmware.
-- **PICSimLab (version 0.9.0 or higher)**: Used to load the compiled microcontroller hex/bin and run the virtual hardware layout.
-- **Virtual Serial Port Emulator**: Required to bridge UART signals between PICSimLab and the Python Dashboard.
-  - *Windows*: Use **com0com** or **VSPE** to create a linked COM pair (e.g., `COM3 <-> COM4`).
-  - *Linux/macOS*: Use `socat` commands: `socat -d -d pty,raw,echo=0 pty,raw,echo=0`.
-- **Python 3.10+ (for Version 2 Bridge)**: FastAPI, Uvicorn, and PySerial gateway dependencies.
-- **Node.js (v18+) (for Version 2 React Dashboard)**: Node Package Manager for launching the Vite dashboard.
-- **Python 3.8+ (for Version 1 Matplotlib GUI)**: With dependencies installed:
-  ```bash
-  pip install pyserial matplotlib numpy
-  ```
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the bridge (connecting to paired COM1 port)
+python bridge.py --port COM1 --baud 115200
+```
+*The bridge will open `COM1` @ 115200 baud, start SQLite session logging in `telemetry.db`, and start the WebSocket server at `http://127.0.0.1:8080`.*
+
+---
+
+### Step 3: Launch React NOC Dashboard
+```bash
+# In a new terminal, navigate to the dashboard directory
+cd dashboard
+
+# Install dependencies
+npm install
+
+# Start Vite development server
+npm run dev
+```
+*Open your browser and navigate to `http://localhost:5173` to access the live automotive cockpit.*
 
 ---
 
 ## Project Structure
 
-```
-.
-├── ARCHITECTURE.md            # In-depth technical module & engine analysis
-├── Core
-│   ├── Inc
-│   │   ├── adas.h             # Alert levels, warning thresholds, ADAS handles
-│   │   ├── buzzer.h           # Buzzer driver APIs & tone declarations (v2.1)
-│   │   ├── common.h           # Share definitions, pin aliases, and drive mode structures
-│   │   ├── ev_control.h       # EV parameters, physical constants, model handles
-│   │   ├── fault.h            # Diagnostic fault registers and recovery contracts
-│   │   ├── main.h             # Core STM32 hardware declarations
-│   │   ├── uart_shell.h       # Ring buffer structures and CLI functions
-│   │   └── ultrasonic.h       # Ultrasonic driver interface config
-│   └── Src
-│       ├── adas.c             # TTC calculation, blind-spot logic, and hysteresis
-│       ├── buzzer.c           # PWM frequency generation and pattern state machines
-│       ├── ev_control.c       # Mathematical vehicle physics & SOC integration
-│       ├── fault.c            # Fault checking, safe-state latching, and reset logic
-│       ├── main.c             # Multi-rate scheduler executive and timer configurations
-│       ├── uart_shell.c       # Ring-buffered CLI shell parsing and commands
-│       └── ultrasonic.c       # microsecond timer pulse timing for HC-SR04
-├── telemetry_bridge           # FastAPI gateway with SQLite logging database (v2)
-├── dashboard                  # React frontend dashboard client (v2)
-├── Drivers                    # STM32 CMSIS and HAL standard libraries
-├── ev_dashboard.py            # Live Matplotlib cockpit visualization (v1)
-├── ev_dash.ioc                # STM32CubeMX graphical configuration project
-├── API_DOCUMENTATION.md       # Message formats and CRC specifications (v2.0)
-├── BUZZER_IMPLEMENTATION_PLAN.md # Buzzer design specifications
-└── README.md                  # Main landing page documentation
-```
-
----
-
-## Core Functionalities
-
-### Vehicle Dynamics Engine
-The dynamics module ([ev_control.c](Core/Src/ev_control.c)) emulates the mechanical and electrical behavior of an EV traction drive:
-- **Torque Mapping**: Converts the accelerator position and drive mode (ECO, NORMAL, SPORT) to a requested torque value.
-
-### ADAS Alert System
-The ADAS preprocessor ([adas.c](Core/Src/adas.c)) monitors blind spots and collision margins.
-
-### Fault Diagnosis & Safe State
-The Fault module ([fault.c](Core/Src/fault.c)) monitors safety thresholds and transitions the vehicle into a **Safe State** during failures.
-
-### UART Diagnostic Shell
-The diagnostic shell ([uart_shell.c](Core/Src/uart_shell.c)) uses a ring buffer to parse commands character-by-character.
-
----
-
-## Vehicle State Machine
-
-The vehicle's operational state is governed by a state machine that controls transition logic:
-
-```mermaid
-stateDiagram-v2
-    [*] --> STATE_PARKED : System Boot
-
-    STATE_PARKED --> STATE_READY : Accelerator Pedal Above 2 Percent
-    STATE_READY --> STATE_DRIVING : Auto Transition (or driver select)
-
-    STATE_DRIVING --> STATE_REGEN : Brake Pedal Above 5 Percent
-    STATE_REGEN --> STATE_DRIVING : Brake Pedal Below or Equal 5 Percent
-
-    STATE_DRIVING --> STATE_FAULT : Thermal Event / Critical Depletion / Collision
-    STATE_REGEN --> STATE_FAULT : Thermal Event / Critical Depletion / Collision
-    STATE_READY --> STATE_FAULT : Critical Fault Detected
-    STATE_PARKED --> STATE_FAULT : Critical Fault Detected
-
-    STATE_FAULT --> STATE_PARKED : Fault Clear Command received
-```
-
----
-
-## Telemetry Protocol
-
-### Version 1 (Matplotlib Interface Protocol)
-Telemetry is streamed over UART continuously in two space-separated text frames:
-*   **Frame 1 (Dynamics)**: `SPD:72.5 SOC:79.3 TRQ:75 TMP:27.1 RNG:260 ACC:50 BRK:0\r\n`
-*   **Frame 2 (ADAS)**: `F:40 L:400 R:400 TTC:2.1s COL:1 BSD:00 ALM:2 FLT:04\r\n`
-
-### Version 2  (Web Diagnostics Protocol)
-Telemetry is unified into a single comma-separated frame starting with `$` and terminating with a custom CRC-16-CCITT check hex:
 ```text
-$timestamp,seq,D,speed,soc,torque,temp,range,accel,brake,front,left,right,ttc,warn,bsd_l,bsd_r,alarm,faults,mode,CRC16*
+ev_dash/
+├── Core/
+│   ├── Inc/
+│   │   ├── adas.h                # ADAS thresholds, TTC formulas, and state handles
+│   │   ├── alarm_manager.h       # Priority-queued alert engine interface
+│   │   ├── buzzer.h              # Hardware PWM buzzer pattern driver
+│   │   ├── common.h              # Pin aliases, math clamps, and vehicle enums
+│   │   ├── config_manager.h      # Flash Page 63 NVM configuration schema
+│   │   ├── crc16.h               # CRC-16-CCITT implementation header
+│   │   ├── dal_adc.h             # DAL: Multi-channel regular ADC scan wrapper
+│   │   ├── dal_flash.h           # DAL: Flash page erase/write/read driver
+│   │   ├── dal_timer.h           # DAL: Hardware timer PWM and microsecond delay
+│   │   ├── dal_uart.h            # DAL: Serial communication wrapper
+│   │   ├── dtc_manager.h         # Standard DTC registry and freeze-frame structs
+│   │   ├── ev_control.h          # EV traction kinematics and battery physics
+│   │   ├── event_manager.h       # Circular event queue publisher
+│   │   ├── fault.h               # Safety fault flags and latching state handles
+│   │   ├── main.h                # HAL core includes and clock prototypes
+│   │   ├── telemetry_encoder.h   # SLIP encoder interface
+│   │   ├── telemetry_protocol.h  # 48-byte packed binary packet definitions
+│   │   ├── uart_shell.h          # Ring-buffered diagnostic CLI interpreter
+│   │   └── ultrasonic.h          # HC-SR04 input capture ultrasonic drivers
+│   └── Src/
+│       ├── adas.c                # ADAS distance fusion and TTC calculations
+│       ├── alarm_manager.c       # Priority resolution and audio routing
+│       ├── buzzer.c              # PWM frequency and duty-cycle audio driver
+│       ├── config_manager.c      # Flash NVM parameter persistence and defaults
+│       ├── crc16.c               # CRC-16-CCITT calculation table
+│       ├── dal_adc.c             # DAL ADC implementation
+│       ├── dal_flash.c           # DAL Flash page programming implementation
+│       ├── dal_timer.c           # DAL Timer PWM & delay implementation
+│       ├── dal_uart.c            # DAL UART transmission implementation
+│       ├── dtc_manager.c         # DTC snapshotting and UART dump routines
+│       ├── ev_control.c          # EV dynamics model and pedal mapping
+│       ├── event_manager.c       # Event publishing and queue management
+│       ├── fault.c               # Safety fault supervisor and contactor trip
+│       ├── main.c                # Main scheduler loop, ISRs, and entry point
+│       ├── telemetry_encoder.c   # SLIP packet framing and byte escaping
+│       ├── uart_shell.c          # Interactive CLI command parser
+│       └── ultrasonic.c          # Ultrasonic trigger and echo capture
+├── telemetry_bridge/
+│   ├── app/
+│   │   ├── crc16.py              # Python CRC-16-CCITT implementation
+│   │   ├── database.py           # SQLite WAL trip logging and session manager
+│   │   ├── parser.py             # SLIP binary packet decoder & struct unpacker
+│   │   ├── replay_mgr.py         # Historical drive cycle playback engine
+│   │   ├── serial_mgr.py         # PySerial thread and stream packet framer
+│   │   └── uvicorn_server.py     # FastAPI application and WebSocket router
+│   ├── bridge.py                 # Bridge daemon entry point CLI
+│   └── requirements.txt          # Python dependencies (FastAPI, PySerial, etc.)
+├── dashboard/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── AdasCanvas.jsx    # Bird's-eye vector radar canvas
+│   │   │   ├── DashboardLayout.jsx # NOC layout shell and navigation
+│   │   │   ├── MetricGauge.jsx   # Radial SVG speed and SOC dial gauges
+│   │   │   ├── StatusHeader.jsx  # Top alert banner and connection status
+│   │   │   └── TelemetryChart.jsx# Scrolling 60s historical time-series chart
+│   │   ├── App.jsx               # Master state orchestrator, CLI, and DTC viewer
+│   │   └── index.css             # Tailwind design tokens and glassmorphism styling
+│   ├── package.json              # Node dependencies (React 19, Lucide, Recharts)
+│   └── vite.config.js            # Vite build configuration
+├── ARCHITECTURE.md               # Authoritative technical architecture specification
+├── ROADMAP.md                    # Strategic evolution roadmap (V1 -> V2 -> V3)
+└── ev_dash.ioc                   # STM32CubeMX peripheral hardware configuration
 ```
 
 ---
 
-## How to Build & Run
+## Future Roadmap: Version 3
 
-### Step 1: Compile Firmware
-1. Open **STM32CubeIDE**.
-2. Import this project workspace directory.
-3. Select **Clean and Build** (configured for ARM GCC compiler).
-4. Verify that a `.hex` and `.elf` binary are generated in the `Debug/` folder.
+Version 3 will evolve this single-ECU system into a **distributed multi-node automotive architecture**:
+* **FreeRTOS Preemptive Kernel**: Replacing the cooperative scheduler with preemptive tasks for Traction Control ($100\text{ Hz}$), ADAS ($50\text{ Hz}$), CAN Network Comms ($20\text{ Hz}$), and Diagnostic Services ($10\text{ Hz}$).
+* **Virtual CAN Bus (ISO 11898)**: Linking simulated Electronic Control Units (Vehicle Control Unit, ADAS Radar Node, and Body Control Gateway) over a simulated CAN network.
+* **Unified Diagnostic Services (ISO 14229 / UDS)**: Expanding DTC diagnostics into formal UDS services (`0x19` ReadDTCInformation, `0x14` ClearDiagnosticInformation, `0x22` ReadDataByIdentifier).
+* **3D WebGL Digital Twin**: Upgrading the 2D canvas into a real-time 3D vehicle representation with dynamic obstacle lighting and camera perspectives.
 
-### Step 2: Set Up Virtual COM Loopback
-Configure a virtual serial bridge to allow communication between PICSimLab and Python. For example, on Windows using com0com or VSPE, create a virtual COM pair:
-*   Device 1: `COM2` (FastAPI Bridge gateway)
-*   Device 2: `COM4` (PICSimLab microcontroller port)
-
-### Step 3: Configure and Load PICSimLab
-1. Open **PICSimLab**.
-2. Select Board: **GPBoard (STM32)** or configure it to run `STM32F103C8T6`.
-3. Go to **File -> Load Hex** and select the `.hex` file compiled in Step 1.
-4. Under **Configure -> Serial**, select `COM4` as the target virtual port.
-5. In PICSimLab, attach potentiometers to pins `PA0`, `PA1`, and `PA3` to control the accelerator, brake, and temperature. Attach ultrasonic sensor models to pins `PB0/1`, `PB2/3`, and `PB4/5`.
-6. Attach a **Buzzer** component and select pin **`A8`** (TIM1 CH1).
-
-### Step 4: Launch Version 1 (Matplotlib GUI)
-1. Open a terminal on your host PC and navigate to the project directory.
-2. Run the legacy GUI dashboard script, pointing it to your virtual COM port (e.g., `COM2`):
-   ```bash
-   python ev_dashboard.py --port COM2
-   ```
-
-### Step 5: Launch Version 2  (Web Diagnostics Platform)
-1. Open a terminal in `telemetry_bridge` and run the FastAPI bridge:
-   ```bash
-   cd telemetry_bridge
-   pip install -r requirements.txt
-   python bridge.py --port COM2 --baud 115200
-   ```
-   *(To run in virtual Demo Mode without hardware: `python bridge.py --demo`)*
-2. Open another terminal in `dashboard` and launch the React client:
-   ```bash
-   cd dashboard
-   npm install
-   npm run dev
-   ```
-3. Open `http://localhost:5173/` in your browser.
+*For complete milestones and architecture breakdown, refer to [ROADMAP.md](file:///d:/Projects/Internship/Emertxe/ev_dash/ROADMAP.md).*
 
 ---
 
-## Future Improvements
+## Engineering Outcomes Demonstrated
 
-- **CAN Bus Integration**: Migrate telemetry streaming from point-to-point UART to a multi-node controller area network (CAN 2.0B) using CAN frames.
-- **FreeRTOS Migration**: Replace the simple time-triggered scheduler with a real-time operating system (FreeRTOS) to support preemptive multitasking.
-- **DMA Enhancements**: Configure DMA streams for UART transmission and multi-channel ADC scanning to reduce CPU overhead.
-- **Physical Sensor Testing**: Validate firmware on physical hardware using three HC-SR04 sensors and an actual STM32 Blue Pill development board.
-- **Diagnostics Logging**: Implement an SD-card log module or internet gateway to store driving data on a remote server.
-
----
-
-## Learning Outcomes
-
-- **Embedded Systems Design**: Gained hands-on experience developing modular code on STM32 microcontrollers using the STM32 HAL library.
-- **Automotive State Machines**: Implemented state machines to manage driving modes, regenerative braking transitions, and safety shutdowns.
-- **Time-Triggered Architectures**: Designed a cooperative scheduler using timer interrupts to run tasks at different update rates.
-- **Sensor Data Filtering**: Developed algorithms to calculate Time-to-Collision (TTC) and implemented hysteresis filters to remove noise from raw sensor inputs.
-- **HIL Testing and Simulation**: Used PICSimLab and Python scripts to run simulated hardware-in-the-loop tests.
+* **Automotive Firmware Engineering**: Bare-metal embedded C, rate-monotonic scheduling, state machines, interrupt handlers, and Driver Abstraction Layer (DAL) design.
+* **Functional Safety & Fault Supervisors**: Contactor tripping, priority-queued alarm management, hardware PWM siren generation, and fail-safe state transitions.
+* **Diagnostic Protocol Design**: ISO/SAE Diagnostic Trouble Codes (DTC), freeze-frame memory snapshotting, event queues, and non-volatile Flash NVM persistence.
+* **Network & Serialization Protocols**: 48-byte packed binary C struct design, SLIP framing, byte-escaping, and CRC-16 error detection.
+* **Full-Stack Telemetry & NOC Tooling**: High-rate serial streaming, Python FastAPI gateways, SQLite WAL databases, WebSocket multiplexing, and modern React 19 dashboards.
 
 ---
 
-## Acknowledgements
+## License & Acknowledgements
 
-- **Emertxe Information Technologies** for providing the curriculum and project guidelines for the embedded systems internship.
+Developed as part of the Advanced Automotive Embedded Systems Platform series. Open-source under the MIT License. Embedded simulation running on [PICSimLab](https://lcgamboa.github.io/picsimlab/).
