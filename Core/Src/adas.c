@@ -1,6 +1,7 @@
 #include "adas.h"
 #include "ultrasonic.h"
 #include "alarm_manager.h"
+#include "event_manager.h"
 
 /* ── Hysteresis helper ───────────────────────────────────────────── */
 /* Returns 1 if alarm is active, 0 if cleared after hysteresis       */
@@ -42,6 +43,10 @@ void ADAS_Init(ADAS_HandleTypeDef *adas)
 /* ── ADAS_Update — call after HCSR04_ReadAll() ───────────────────── */
 void ADAS_Update(ADAS_HandleTypeDef *adas, EV_HandleTypeDef *ev)
 {
+    uint8_t prev_fcw = adas->collision_warn;
+    uint8_t prev_bsd_l = adas->blindspot_left;
+    uint8_t prev_bsd_r = adas->blindspot_right;
+
     /* Step 1: Get distances from cache */
     adas->front_cm = HCSR04_GetDistance(HCSR04_FRONT);
     adas->left_cm  = HCSR04_GetDistance(HCSR04_LEFT);
@@ -131,4 +136,19 @@ void ADAS_Update(ADAS_HandleTypeDef *adas, EV_HandleTypeDef *ev)
 
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,  /* LED_BLINDSPOT_R */
         adas->blindspot_right ? GPIO_PIN_SET : GPIO_PIN_RESET);
+
+    /* Publish events on warning transitions */
+    if (adas->collision_warn != prev_fcw) {
+        if (adas->collision_warn == 2) {
+            EventManager_Publish(EVENT_FCW_WARNING, EVENT_SEVERITY_CRITICAL, EVENT_SOURCE_ADAS, "Collision Warning: Critical range breach");
+        } else if (adas->collision_warn == 1) {
+            EventManager_Publish(EVENT_FCW_WARNING, EVENT_SEVERITY_WARNING, EVENT_SOURCE_ADAS, "Collision Warning: Front obstacle approach");
+        }
+    }
+    if (adas->blindspot_left != prev_bsd_l && adas->blindspot_left) {
+        EventManager_Publish(EVENT_BSD_WARNING, EVENT_SEVERITY_WARNING, EVENT_SOURCE_ADAS, "BSD: Vehicle in left blindspot");
+    }
+    if (adas->blindspot_right != prev_bsd_r && adas->blindspot_right) {
+        EventManager_Publish(EVENT_BSD_WARNING, EVENT_SEVERITY_WARNING, EVENT_SOURCE_ADAS, "BSD: Vehicle in right blindspot");
+    }
 }

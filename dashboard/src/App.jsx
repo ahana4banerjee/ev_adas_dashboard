@@ -131,6 +131,8 @@ function App() {
           setTerminalLogs(prev => [...prev, '[REPLAY] Drive playback finished.'])
         } else if (msg.event === 'cmd_ack') {
           setTerminalLogs(prev => [...prev, `[ACK] Command "${msg.data.command}" success: ${msg.data.success}`])
+        } else if (msg.event === 'cli_log') {
+          setTerminalLogs(prev => [...prev, msg.data])
         }
       } catch (err) {
         console.error('Error parsing packet data:', err)

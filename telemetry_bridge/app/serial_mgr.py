@@ -222,6 +222,12 @@ class SerialManager:
                                     parsed["raw"] = line
                                     if self.on_packet_received:
                                         self.on_packet_received(parsed)
+                                else:
+                                    if self.on_packet_received:
+                                        self.on_packet_received({
+                                            "event": "cli_log",
+                                            "data": line
+                                        })
                         except Exception as parse_ex:
                             logger.error(f"Error decoding raw bytes: {parse_ex}")
                     else:

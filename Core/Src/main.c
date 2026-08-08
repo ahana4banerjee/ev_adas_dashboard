@@ -31,6 +31,7 @@
 #include "crc16.h"
 #include "buzzer.h"
 #include "alarm_manager.h"
+#include "event_manager.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,7 +57,6 @@ volatile uint8_t sensor_flag=0;
 
 
 static uint8_t ev_div = 0;
-static uint32_t loop_count = 0;
 static uint8_t rx_byte;
 
 char msg[100];
@@ -147,6 +147,7 @@ int main(void)
   Fault_Init(&flt);
   Buzzer_Init(&htim1, TIM_CHANNEL_1);
   AlarmManager_Init();
+  EventManager_Init();
   Shell_Init(&huart1, &ev, &adas, &flt);
   /* USER CODE END 2 */
 
@@ -184,6 +185,9 @@ int main(void)
 	    	  /* Update alarm manager priority queues and tick the buzzer */
 	    	  AlarmManager_Update();
 	    	  Buzzer_Update();
+
+	    	  /* Process and flush diagnostic event queues over UART */
+	    	  EventManager_ProcessQueue();
 	      }
 	  }
     /* USER CODE END WHILE */

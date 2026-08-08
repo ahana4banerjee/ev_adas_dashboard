@@ -16,6 +16,8 @@
  */
 
 #include "ev_control.h"
+#include "event_manager.h"
+#include <stdio.h>
 
 /* ─── Drive-mode torque scaling table ────────────────────────────────────── */
 static const float TORQUE_MAP[3] = {
@@ -110,6 +112,7 @@ void EV_ReadADC(EV_HandleTypeDef *ev)
  */
 void EV_Update(EV_HandleTypeDef *ev, float dt)
 {
+    uint8_t prev_state = ev->state;
 
 	switch (ev->state)
 	        {
@@ -206,15 +209,33 @@ void EV_Update(EV_HandleTypeDef *ev, float dt)
             ev->motor_temp  = CLAMP(ev->motor_temp, 25.0f, 130.0f);
         }
 
-
+    /* Check state transitions and publish events */
+    if (ev->state != prev_state) {
+        if (prev_state == STATE_PARKED && (ev->state == STATE_READY || ev->state == STATE_DRIVING)) {
+            EventManager_Publish(EVENT_VEHICLE_STARTED, EVENT_SEVERITY_INFO, EVENT_SOURCE_EV, "Vehicle systems started");
+            EventManager_Publish(EVENT_TRIP_STARTED, EVENT_SEVERITY_INFO, EVENT_SOURCE_EV, "Trip tracking initialized");
+        } else if (ev->state == STATE_PARKED && prev_state != STATE_PARKED) {
+            EventManager_Publish(EVENT_VEHICLE_STOPPED, EVENT_SEVERITY_INFO, EVENT_SOURCE_EV, "Vehicle systems stopped");
+            EventManager_Publish(EVENT_TRIP_STOPPED, EVENT_SEVERITY_INFO, EVENT_SOURCE_EV, "Trip tracking finalized");
+        } else if (ev->state == STATE_FAULT) {
+            EventManager_Publish(EVENT_EMERGENCY_STOP, EVENT_SEVERITY_CRITICAL, EVENT_SOURCE_EV, "Emergency safety stop triggered");
+        }
+    }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 void EV_SetDriveMode(EV_HandleTypeDef *ev, uint8_t mode)
 {
-    if (mode <= DRIVE_MODE_SPORT)
-        ev->drive_mode = mode;
+    if (mode <= DRIVE_MODE_SPORT) {
+        if (ev->drive_mode != mode) {
+            const char* mode_names[] = {"ECO", "NORMAL", "SPORT"};
+            char desc[40];
+            sprintf(desc, "Drive Mode: %s", mode_names[mode]);
+            ev->drive_mode = mode;
+            EventManager_Publish(EVENT_DRIVE_MODE_CHANGED, EVENT_SEVERITY_INFO, EVENT_SOURCE_EV, desc);
+        }
+    }
 }
 
 void EV_InjectSpeed(EV_HandleTypeDef *ev, float speed_kmh)
