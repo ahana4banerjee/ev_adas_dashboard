@@ -3,6 +3,7 @@
 #include "alarm_manager.h"
 #include "event_manager.h"
 #include "buzzer.h"
+#include "dtc_manager.h"
 
 extern TIM_HandleTypeDef htim1;
 
@@ -27,15 +28,18 @@ void Fault_Check(Fault_HandleTypeDef *flt,
     if (adas->collision_warn == 2 && HCSR04_IsValid(HCSR04_FRONT))
         new_flags |= FAULT_COL;
 
-    /* Detect transitions to publish events */
+    /* Detect transitions to publish events and log DTC freeze frames */
     if ((new_flags & FAULT_OT) && !(flt->flags & FAULT_OT)) {
         EventManager_Publish(EVENT_MOTOR_OVERHEAT, EVENT_SEVERITY_CRITICAL, EVENT_SOURCE_FAULT, "Motor temperature limit exceeded");
+        DTC_Log(DTC_MOTOR_OVERHEAT, ev, "Motor temperature limit exceeded");
     }
     if ((new_flags & FAULT_SOC) && !(flt->flags & FAULT_SOC)) {
         EventManager_Publish(EVENT_BATTERY_LOW, EVENT_SEVERITY_CRITICAL, EVENT_SOURCE_FAULT, "Battery state of charge critically low");
+        DTC_Log(DTC_BATTERY_LOW, ev, "Battery state of charge critically low");
     }
     if ((new_flags & FAULT_COL) && !(flt->flags & FAULT_COL)) {
         EventManager_Publish(EVENT_CRITICAL_COLLISION, EVENT_SEVERITY_CRITICAL, EVENT_SOURCE_FAULT, "Critical front collision hazard");
+        DTC_Log(DTC_COLLISION_LATCH, ev, "Critical front collision hazard");
     }
 
     flt->flags = new_flags;

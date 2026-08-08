@@ -82,6 +82,32 @@ class SerialManager:
                     self.demo_drive_mode = 1
                 elif sub == "sport":
                     self.demo_drive_mode = 2
+            elif cmd in ("dtc read", "dtc"):
+                if self.on_packet_received:
+                    self.on_packet_received({"event": "cli_log", "data": "===== DIAGNOSTIC TROUBLE CODES (DTC) ====="})
+                    if self.demo_fault_flags != 0:
+                        count = 1
+                        if self.demo_fault_flags & 0x01:
+                            self.on_packet_received({"event": "cli_log", "data": f" [{count}] Code: P0A80 (0x0A80) | State: ACTIVE | Time: {int(time.time()*1000)&0xFFFFFF}ms"})
+                            self.on_packet_received({"event": "cli_log", "data": "     FreezeFrame: Spd=45.0km/h, SOC=85.0%, Temp=95.0C"})
+                            self.on_packet_received({"event": "cli_log", "data": "     Desc: Motor temperature limit exceeded"})
+                            count += 1
+                        if self.demo_fault_flags & 0x02:
+                            self.on_packet_received({"event": "cli_log", "data": f" [{count}] Code: P0210 (0x0210) | State: ACTIVE | Time: {int(time.time()*1000)&0xFFFFFF}ms"})
+                            self.on_packet_received({"event": "cli_log", "data": "     FreezeFrame: Spd=20.0km/h, SOC=1.0%, Temp=35.0C"})
+                            self.on_packet_received({"event": "cli_log", "data": "     Desc: Battery state of charge critically low"})
+                            count += 1
+                        if self.demo_fault_flags & 0x04:
+                            self.on_packet_received({"event": "cli_log", "data": f" [{count}] Code: C1C00 (0x1C00) | State: ACTIVE | Time: {int(time.time()*1000)&0xFFFFFF}ms"})
+                            self.on_packet_received({"event": "cli_log", "data": "     FreezeFrame: Spd=65.0km/h, SOC=78.0%, Temp=30.0C"})
+                            self.on_packet_received({"event": "cli_log", "data": "     Desc: Critical front collision hazard"})
+                            count += 1
+                    else:
+                        self.on_packet_received({"event": "cli_log", "data": " No stored DTC fault records. System clean."})
+                    self.on_packet_received({"event": "cli_log", "data": "=========================================="})
+            elif cmd == "dtc clear":
+                if self.on_packet_received:
+                    self.on_packet_received({"event": "cli_log", "data": "All DTC records cleared."})
             return True
 
         if not self.serial_conn or not self.serial_conn.is_open:

@@ -254,6 +254,24 @@ function App() {
     }
   }
 
+  const handleReadDTCs = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'cli_command', data: 'dtc read' }))
+      setTerminalLogs(prev => [...prev, '[DTC] Querying Diagnostic Trouble Codes & Freeze Frames...'])
+    } else {
+      setTerminalLogs(prev => [...prev, '[DTC] Query failed: Serial bridge link offline.'])
+    }
+  }
+
+  const handleClearDTCs = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ event: 'cli_command', data: 'dtc clear' }))
+      setTerminalLogs(prev => [...prev, '[DTC] Cleared stored Diagnostic Trouble Codes.'])
+    } else {
+      setTerminalLogs(prev => [...prev, '[DTC] Clear failed: Serial bridge link offline.'])
+    }
+  }
+
   const handleObstacleOverride = (val) => {
     // Optimistic state update for immediate slider feedback
     setMetrics(prev => ({ ...prev, frontDist: val }))
@@ -678,6 +696,24 @@ function App() {
                   >
                     <span className="text-xs font-bold font-mono uppercase">Clear System Faults</span>
                     <span className="text-[8px] opacity-75 font-mono mt-0.5">Restore normal states</span>
+                  </button>
+                </div>
+
+                {/* DTC Diagnostic Actions */}
+                <div className="grid grid-cols-2 gap-3 mt-1">
+                  <button
+                    onClick={handleReadDTCs}
+                    className="flex flex-col items-center justify-center p-2.5 bg-secondary/15 border border-secondary/30 rounded-lg hover:bg-secondary/25 text-secondary transition-all font-bold cursor-pointer"
+                  >
+                    <span className="text-xs font-bold font-mono uppercase">Read DTC Logs</span>
+                    <span className="text-[8px] opacity-75 font-mono mt-0.5">Dump Freeze Frames</span>
+                  </button>
+                  <button
+                    onClick={handleClearDTCs}
+                    className="flex flex-col items-center justify-center p-2.5 bg-card border border-border rounded-lg hover:bg-border/40 text-gray-300 transition-all font-bold cursor-pointer"
+                  >
+                    <span className="text-xs font-bold font-mono uppercase">Clear DTC Memory</span>
+                    <span className="text-[8px] opacity-75 font-mono mt-0.5">Wipe Fault Registry</span>
                   </button>
                 </div>
 

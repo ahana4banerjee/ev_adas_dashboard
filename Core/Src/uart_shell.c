@@ -2,6 +2,7 @@
 #include "uart_shell.h"
 #include "ultrasonic.h"
 #include "crc16.h"
+#include "dtc_manager.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -231,6 +232,19 @@ static void process_cmd(char *cmd)
         return;
     }
 
+    /* ── dtc read / dtc ───────────────────────────────────────── */
+    if (!strcmp(cmd, "dtc read") || !strcmp(cmd, "dtc")) {
+        DTC_PrintAll();
+        return;
+    }
+
+    /* ── dtc clear ────────────────────────────────────────────── */
+    if (!strcmp(cmd, "dtc clear")) {
+        DTC_ClearAll();
+        shell_tx("All DTC records cleared.\r\n> ");
+        return;
+    }
+
     /* ── help ────────────────────────────────────────────────── */
     if (!strcmp(cmd,"help") || !strcmp(cmd,"?")) {
         shell_tx("\r\nCommands:\r\n"
@@ -242,6 +256,7 @@ static void process_cmd(char *cmd)
             "  obstacle clear\r\n"
             "  fault inject <motor|soc|col>\r\n"
             "  fault clear\r\n"
+            "  dtc [read|clear]\r\n"
             "  set <fcw_warn|fcw_crit|bsd_dist|bsd_speed|overspeed|ttc_warn|ttc_crit> <val>\r\n"
             "  alarm test\r\n"
             "  status\r\n"

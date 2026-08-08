@@ -32,6 +32,7 @@
 #include "buzzer.h"
 #include "alarm_manager.h"
 #include "event_manager.h"
+#include "dtc_manager.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -148,6 +149,7 @@ int main(void)
   Buzzer_Init(&htim1, TIM_CHANNEL_1);
   AlarmManager_Init();
   EventManager_Init();
+  DTC_Init();
   Shell_Init(&huart1, &ev, &adas, &flt);
   /* USER CODE END 2 */
 
