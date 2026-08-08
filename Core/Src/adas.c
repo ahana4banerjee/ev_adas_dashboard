@@ -2,6 +2,7 @@
 #include "ultrasonic.h"
 #include "alarm_manager.h"
 #include "event_manager.h"
+#include "config_manager.h"
 
 /* ── Hysteresis helper ───────────────────────────────────────────── */
 /* Returns 1 if alarm is active, 0 if cleared after hysteresis       */
@@ -30,14 +31,25 @@ void ADAS_Init(ADAS_HandleTypeDef *adas)
     adas->right_cm = 400.0f;
     adas->ttc_sec  = 99.9f;
 
-    /* Load dynamic config values from defaults */
-    adas->fcw_warn_cm   = ADAS_FCW_WARN_CM;
-    adas->fcw_crit_cm   = ADAS_FCW_CRIT_CM;
-    adas->ttc_warn_s    = ADAS_TTC_WARN_S;
-    adas->ttc_crit_s    = ADAS_TTC_CRIT_S;
-    adas->bsd_dist_cm   = ADAS_BSD_DIST_CM;
-    adas->bsd_speed_kmh = ADAS_BSD_SPEED_KMH;
-    adas->overspeed_kmh = ADAS_OVERSPEED_KMH;
+    /* Load dynamic config values from persistent NVM configuration */
+    const Config_t *cfg = Config_Get();
+    if (cfg) {
+        adas->fcw_warn_cm   = cfg->fcw_warn_cm;
+        adas->fcw_crit_cm   = cfg->fcw_crit_cm;
+        adas->ttc_warn_s    = cfg->ttc_warn_s;
+        adas->ttc_crit_s    = cfg->ttc_crit_s;
+        adas->bsd_dist_cm   = cfg->bsd_dist_cm;
+        adas->bsd_speed_kmh = cfg->bsd_speed_kmh;
+        adas->overspeed_kmh = cfg->overspeed_kmh;
+    } else {
+        adas->fcw_warn_cm   = ADAS_FCW_WARN_CM;
+        adas->fcw_crit_cm   = ADAS_FCW_CRIT_CM;
+        adas->ttc_warn_s    = ADAS_TTC_WARN_S;
+        adas->ttc_crit_s    = ADAS_TTC_CRIT_S;
+        adas->bsd_dist_cm   = ADAS_BSD_DIST_CM;
+        adas->bsd_speed_kmh = ADAS_BSD_SPEED_KMH;
+        adas->overspeed_kmh = ADAS_OVERSPEED_KMH;
+    }
 }
 
 /* ── ADAS_Update — call after HCSR04_ReadAll() ───────────────────── */

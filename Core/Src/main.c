@@ -37,6 +37,7 @@
 #include "dal_timer.h"
 #include "dal_uart.h"
 #include "dal_flash.h"
+#include "config_manager.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -151,6 +152,9 @@ int main(void)
   DAL_UART_Init(&huart1);
   HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 
+  /* Load persistent configuration from NVM flash */
+  Config_Init();
+
   HCSR04_Init();
   ADAS_Init(&adas);
   Fault_Init(&flt);
@@ -199,6 +203,11 @@ int main(void)
 	    	  /* Process and flush diagnostic event queues over UART */
 	    	  EventManager_ProcessQueue();
 	      }
+
+	      /* Auto-recovery watchdog: Ensure UART receiver is always listening */
+	      if (huart1.RxState == HAL_UART_STATE_READY) {
+	          HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
+	      }
 	  }
     /* USER CODE END WHILE */
 
@@ -210,6 +219,21 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	if (huart->Instance==USART1)
 	{
 		Shell_PushByte(rx_byte);
+		HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
+	}
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+	if (huart->Instance==USART1)
+	{
+		/* Clear overrun, noise, and framing error flags */
+		__HAL_UART_CLEAR_OREFLAG(huart);
+		__HAL_UART_CLEAR_NEFLAG(huart);
+		__HAL_UART_CLEAR_FEFLAG(huart);
+		__HAL_UART_CLEAR_PEFLAG(huart);
+
+		/* Re-arm interrupt receive */
 		HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 	}
 }

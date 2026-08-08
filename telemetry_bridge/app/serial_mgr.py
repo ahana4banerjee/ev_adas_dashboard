@@ -108,6 +108,24 @@ class SerialManager:
             elif cmd == "dtc clear":
                 if self.on_packet_received:
                     self.on_packet_received({"event": "cli_log", "data": "All DTC records cleared."})
+            elif cmd in ("config read", "config"):
+                if self.on_packet_received:
+                    self.on_packet_received({"event": "cli_log", "data": "===== SYSTEM CONFIGURATION (NVM) ====="})
+                    self.on_packet_received({"event": "cli_log", "data": " FCW Warning Distance  : 50.0 cm"})
+                    self.on_packet_received({"event": "cli_log", "data": " FCW Critical Distance : 20.0 cm"})
+                    self.on_packet_received({"event": "cli_log", "data": " TTC Warning Time      : 3.0 s"})
+                    self.on_packet_received({"event": "cli_log", "data": " TTC Critical Time     : 1.5 s"})
+                    self.on_packet_received({"event": "cli_log", "data": " BSD Range Threshold   : 30.0 cm"})
+                    self.on_packet_received({"event": "cli_log", "data": " BSD Speed Gate        : 20.0 km/h"})
+                    self.on_packet_received({"event": "cli_log", "data": " Overspeed Limit       : 120.0 km/h"})
+                    self.on_packet_received({"event": "cli_log", "data": " Storage Flash Page    : 0x0800FC00 (CRC: 0x000012AB)"})
+                    self.on_packet_received({"event": "cli_log", "data": "======================================"})
+            elif cmd == "config reset":
+                if self.on_packet_received:
+                    self.on_packet_received({"event": "cli_log", "data": "Configuration reset to factory defaults and saved to NVM Flash."})
+            elif cmd.startswith("set "):
+                if self.on_packet_received:
+                    self.on_packet_received({"event": "cli_log", "data": f"[NVM] Parameter updated and written to Flash Page 0x0800FC00."})
             return True
 
         if not self.serial_conn or not self.serial_conn.is_open:

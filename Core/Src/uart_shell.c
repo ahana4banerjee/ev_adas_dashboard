@@ -4,6 +4,7 @@
 #include "crc16.h"
 #include "dtc_manager.h"
 #include "dal_uart.h"
+#include "config_manager.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -209,15 +210,24 @@ static void process_cmd(char *cmd)
 
     /* ── set <parameter> <value> ─────────────────────────────── */
     if (sscanf(cmd, "set %31s %f", arg1, &fval) == 2) {
-        if      (!strcmp(arg1, "fcw_warn"))   _adas->fcw_warn_cm = fval;
-        else if (!strcmp(arg1, "fcw_crit"))   _adas->fcw_crit_cm = fval;
-        else if (!strcmp(arg1, "bsd_dist"))   _adas->bsd_dist_cm = fval;
-        else if (!strcmp(arg1, "bsd_speed"))  _adas->bsd_speed_kmh = fval;
-        else if (!strcmp(arg1, "overspeed"))  _adas->overspeed_kmh = fval;
-        else if (!strcmp(arg1, "ttc_warn"))   _adas->ttc_warn_s = fval;
-        else if (!strcmp(arg1, "ttc_crit"))   _adas->ttc_crit_s = fval;
-        else { shell_tx("Unknown parameter.\r\n> "); return; }
-        shell_tx("OK\r\n> ");
+        if (Config_SetParam(arg1, fval, _adas)) {
+            shell_tx("OK (Saved to NVM Flash)\r\n> ");
+        } else {
+            shell_tx("Unknown parameter or flash write error.\r\n> ");
+        }
+        return;
+    }
+
+    /* ── config read / config ────────────────────────────────── */
+    if (!strcasecmp(cmd, "config read") || !strcasecmp(cmd, "config") || !strncasecmp(cmd, "config", 6)) {
+        Config_Print();
+        return;
+    }
+
+    /* ── config reset ────────────────────────────────────────── */
+    if (!strcasecmp(cmd, "config reset")) {
+        Config_ResetDefaults(_adas);
+        shell_tx("Configuration reset to factory defaults and saved to NVM Flash.\r\n> ");
         return;
     }
 
@@ -260,6 +270,7 @@ static void process_cmd(char *cmd)
             "  fault inject <motor|soc|col>\r\n"
             "  fault clear\r\n"
             "  dtc [read|clear]\r\n"
+            "  config [read|reset]\r\n"
             "  set <fcw_warn|fcw_crit|bsd_dist|bsd_speed|overspeed|ttc_warn|ttc_crit> <val>\r\n"
             "  alarm test\r\n"
             "  status\r\n"
@@ -298,11 +309,15 @@ static void process_frame(char *frame)
         }
 
         if (comma_count == 3 && *p) {
-            char type = *(p - 2);
-            if (type == 'C') {
-                // Execute command
-                process_cmd(p);
+            // Trim leading spaces
+            while (*p == ' ') p++;
+            // Trim trailing \r, \n, spaces
+            char *end = p + strlen(p) - 1;
+            while (end > p && (*end == '\r' || *end == '\n' || *end == ' ')) {
+                *end = '\0';
+                end--;
             }
+            process_cmd(p);
         }
     } else {
         shell_tx("[ERROR] CRC mismatch in command packet\r\n");

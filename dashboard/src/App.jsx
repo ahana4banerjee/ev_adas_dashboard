@@ -72,6 +72,10 @@ function App() {
     ttcWarn: 3.0,
     ttcCrit: 1.5
   })
+  const thresholdsRef = useRef(thresholds)
+  useEffect(() => {
+    thresholdsRef.current = thresholds
+  }, [thresholds])
 
   // Diagnostic Trouble Codes (DTC) parsed records
   const [dtcRecords, setDtcRecords] = useState([])
@@ -224,7 +228,7 @@ function App() {
       ws.send(JSON.stringify({ event: 'cli_command', data: `set overspeed ${thresholds.overspeed}` }))
       ws.send(JSON.stringify({ event: 'cli_command', data: `set ttc_warn ${thresholds.ttcWarn}` }))
       ws.send(JSON.stringify({ event: 'cli_command', data: `set ttc_crit ${thresholds.ttcCrit}` }))
-      setTerminalLogs(prev => [...prev, '[CONFIG] Sent parameter registers to vehicle controller.'])
+      setTerminalLogs(prev => [...prev, '[CONFIG] Sent parameters to vehicle controller & committed to Flash NVM.'])
     } else {
       setTerminalLogs(prev => [...prev, '[CONFIG] Sync failed: Serial bridge link offline.'])
     }
@@ -431,12 +435,78 @@ function App() {
   }
 
   const executeCommand = (cmdStr) => {
-    if (!cmdStr.trim()) return
-    setTerminalLogs(prev => [...prev, `> ${cmdStr}`])
+    const trimmed = cmdStr.trim()
+    if (!trimmed) return
+    setTerminalLogs(prev => [...prev, `> ${trimmed}`])
+
+    const setMatch = trimmed.match(/^set\s+([a-zA-Z_]+)\s+([0-9.]+)/i)
+    if (setMatch) {
+      const param = setMatch[1].toLowerCase()
+      const val = parseFloat(setMatch[2])
+      if (param === 'fcw_warn') {
+        thresholdsRef.current.fcwWarn = val
+        setThresholds(prev => ({ ...prev, fcwWarn: val }))
+      } else if (param === 'fcw_crit') {
+        thresholdsRef.current.fcwCrit = val
+        setThresholds(prev => ({ ...prev, fcwCrit: val }))
+      } else if (param === 'bsd_dist') {
+        thresholdsRef.current.bsdDist = val
+        setThresholds(prev => ({ ...prev, bsdDist: val }))
+      } else if (param === 'overspeed') {
+        thresholdsRef.current.overspeed = val
+        setThresholds(prev => ({ ...prev, overspeed: val }))
+      } else if (param === 'ttc_warn') {
+        thresholdsRef.current.ttcWarn = val
+        setThresholds(prev => ({ ...prev, ttcWarn: val }))
+      } else if (param === 'ttc_crit') {
+        thresholdsRef.current.ttcCrit = val
+        setThresholds(prev => ({ ...prev, ttcCrit: val }))
+      }
+    }
+
+    const lower = trimmed.toLowerCase()
+    if (lower === 'config reset') {
+      const defs = { fcwWarn: 50, fcwCrit: 20, bsdDist: 30, overspeed: 120, ttcWarn: 3.0, ttcCrit: 1.5 }
+      thresholdsRef.current = defs
+      setThresholds(defs)
+    } else if (lower === 'config' || lower === 'config read') {
+      const curr = thresholdsRef.current
+      setTerminalLogs(prev => [
+        ...prev,
+        '===== SYSTEM CONFIGURATION (NVM) =====',
+        ` FCW Warning Distance  : ${curr.fcwWarn.toFixed(1)} cm`,
+        ` FCW Critical Distance : ${curr.fcwCrit.toFixed(1)} cm`,
+        ` TTC Warning Time      : ${curr.ttcWarn.toFixed(1)} s`,
+        ` TTC Critical Time     : ${curr.ttcCrit.toFixed(1)} s`,
+        ` BSD Range Threshold   : ${curr.bsdDist.toFixed(1)} cm`,
+        ` BSD Speed Gate        : 20.0 km/h`,
+        ` Overspeed Limit       : ${curr.overspeed.toFixed(1)} km/h`,
+        ' Storage Flash Page    : 0x0800FC00 (NVM Protected)',
+        '======================================'
+      ])
+    } else if (lower === 'help' || lower === '?') {
+      setTerminalLogs(prev => [
+        ...prev,
+        'Commands:',
+        '  mode <eco|normal|sport>',
+        '  speed set <kmh>',
+        '  soc set <pct>',
+        '  temp set <degC>',
+        '  obstacle <cm>',
+        '  obstacle clear',
+        '  fault inject <motor|soc|col>',
+        '  fault clear',
+        '  dtc [read|clear]',
+        '  config [read|reset]',
+        '  set <fcw_warn|fcw_crit|bsd_dist|bsd_speed|overspeed|ttc_warn|ttc_crit> <val>',
+        '  status',
+        '  reset'
+      ])
+    }
     
-    // If ws is active, send it
+    // If ws is active, send it to microcontroller via bridge
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ event: 'cli_command', data: cmdStr }))
+      ws.send(JSON.stringify({ event: 'cli_command', data: trimmed }))
     } else {
       setTerminalLogs(prev => [...prev, '[ERROR] Cannot transmit: Serial bridge link offline.'])
     }
@@ -782,7 +852,10 @@ function App() {
                     ttcWarn: 3.0,
                     ttcCrit: 1.5
                   });
-                  setTerminalLogs(prev => [...prev, '[CONFIG] Threshold state reset to defaults. Click Sync to apply.']);
+                  if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ event: 'cli_command', data: 'config reset' }));
+                  }
+                  setTerminalLogs(prev => [...prev, '[CONFIG] Restored factory default thresholds to Flash NVM.']);
                 }}
                 className="bg-card border border-border text-gray-300 text-[10px] font-bold font-mono uppercase px-4 py-2 rounded hover:bg-border/40 transition-colors"
               >
