@@ -102,14 +102,14 @@ void DTC_ClearAll(void)
 
 void DTC_PrintAll(void)
 {
-    char buf[180];
+    char buf[120];
     int len;
 
-    len = sprintf(buf, "\r\n===== DIAGNOSTIC TROUBLE CODES (DTC) =====\r\n");
+    len = sprintf(buf, "===== DIAGNOSTIC TROUBLE CODES (DTC) =====\r\n");
     HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
 
     if (dtc_count == 0) {
-        len = sprintf(buf, " No stored DTC fault records. System clean.\r\n");
+        len = sprintf(buf, "No stored DTC fault records. System clean.\r\n");
         HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
     } else {
         for (uint32_t i = 0; i < dtc_count; i++) {
@@ -123,20 +123,23 @@ void DTC_PrintAll(void)
             if (socd < 0) socd = -socd;
             if (tmpd < 0) tmpd = -tmpd;
 
-            len = sprintf(buf, " [%u] Code: %s (0x%04X) | State: %s | Time: %lums\r\n"
-                               "     FreezeFrame: Spd=%d.%dkm/h, SOC=%d.%d%%, Temp=%d.%dC\r\n"
-                               "     Desc: %s\r\n",
+            len = sprintf(buf, "[DTC #%u] %s (0x%04X) | %s | %lums\r\n",
                           (unsigned int)(i + 1),
                           DTC_CodeToString(dtc_records[i].dtc_code),
                           dtc_records[i].dtc_code,
                           dtc_records[i].active ? "ACTIVE" : "HISTORY",
-                          (unsigned long)dtc_records[i].timestamp,
-                          spd, spdd, soc, socd, tmp, tmpd,
-                          dtc_records[i].description);
+                          (unsigned long)dtc_records[i].timestamp);
+            HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
+
+            len = sprintf(buf, "  FreezeFrame: Speed=%d.%d km/h, SOC=%d.%d%%, Temp=%d.%d C\r\n",
+                          spd, spdd, soc, socd, tmp, tmpd);
+            HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
+
+            len = sprintf(buf, "  Detail: %s\r\n", dtc_records[i].description);
             HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
         }
     }
 
-    len = sprintf(buf, "==========================================\r\n> ");
+    len = sprintf(buf, "==========================================\r\n");
     HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
 }
