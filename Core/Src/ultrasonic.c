@@ -1,4 +1,5 @@
 #include "ultrasonic.h"
+#include "dal_timer.h"
 
 typedef struct {
     GPIO_TypeDef *trig_port;
@@ -18,16 +19,10 @@ static const HCSR04_Sensor_t SENSORS[HCSR04_COUNT] = {
 
 static HCSR04_Result_t results[HCSR04_COUNT];
 
-/* ── FIX 1: Cast to uint16_t for safe 16-bit rollover ─────────────────── */
+/* ── Cast to uint16_t for safe 16-bit rollover ─────────────────── */
 static inline uint16_t TIM2_GetUS(void)
 {
     return (uint16_t)__HAL_TIM_GET_COUNTER(&htim2);
-}
-
-static void Delay_US(uint16_t us)
-{
-    uint16_t start = TIM2_GetUS();
-    while ((uint16_t)(TIM2_GetUS() - start) < us);
 }
 
 void HCSR04_Init(void)
@@ -48,9 +43,9 @@ HCSR04_Result_t HCSR04_Read(HCSR04_ID id)
 
     /* ── Step 1: Send 10µs TRIG pulse ─────────────────────────────── */
     HAL_GPIO_WritePin(s->trig_port, s->trig_pin, GPIO_PIN_RESET);
-    Delay_US(2);                              /* ensure clean LOW start */
+    DAL_Timer_DelayUs(2);                             /* ensure clean LOW start */
     HAL_GPIO_WritePin(s->trig_port, s->trig_pin, GPIO_PIN_SET);
-    Delay_US(10);                             /* 10µs HIGH              */
+    DAL_Timer_DelayUs(10);                            /* 10µs HIGH              */
     HAL_GPIO_WritePin(s->trig_port, s->trig_pin, GPIO_PIN_RESET);
 
     /* ── Step 2: Wait for ECHO HIGH ────────────────────────────────── */
