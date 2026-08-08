@@ -63,18 +63,22 @@ void ADAS_Update(ADAS_HandleTypeDef *adas, EV_HandleTypeDef *ev)
     }
 
     /* Step 3: Forward Collision Warning */
-    uint8_t fcw_crit = (adas->front_cm < adas->fcw_crit_cm)
-                     || (adas->ttc_sec  < adas->ttc_crit_s);
-    uint8_t fcw_warn = (adas->front_cm < adas->fcw_warn_cm)
-                     || (adas->ttc_sec  < adas->ttc_warn_s);
-
-    if (hyst_check(&adas->hyst_fcw_crit, fcw_crit)) {
-        adas->hyst_fcw_warn = 0;        // reset warn counter when crit fires
+    if (adas->override_col_active) {
         adas->collision_warn = 2;
-    } else if (hyst_check(&adas->hyst_fcw_warn, fcw_warn)) {
-        adas->collision_warn = 1;
     } else {
-        adas->collision_warn = 0;
+        uint8_t fcw_crit = (adas->front_cm < adas->fcw_crit_cm)
+                         || (adas->ttc_sec  < adas->ttc_crit_s);
+        uint8_t fcw_warn = (adas->front_cm < adas->fcw_warn_cm)
+                         || (adas->ttc_sec  < adas->ttc_warn_s);
+
+        if (hyst_check(&adas->hyst_fcw_crit, fcw_crit)) {
+            adas->hyst_fcw_warn = 0;        // reset warn counter when crit fires
+            adas->collision_warn = 2;
+        } else if (hyst_check(&adas->hyst_fcw_warn, fcw_warn)) {
+            adas->collision_warn = 1;
+        } else {
+            adas->collision_warn = 0;
+        }
     }
 
     /* Step 4: Blind Spot Detection */

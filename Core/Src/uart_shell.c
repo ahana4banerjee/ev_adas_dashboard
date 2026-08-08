@@ -167,6 +167,7 @@ static void process_cmd(char *cmd)
             EV_InjectSOC(_ev, 1.0f);
             shell_tx("Injected low SOC (1%)\r\n> ");
         } else if (!strcmp(arg1,"col")) {
+            _adas->override_col_active = 1;
             _adas->collision_warn = 2;
             shell_tx("Injected collision critical\r\n> ");
         } else {
@@ -177,6 +178,7 @@ static void process_cmd(char *cmd)
 
     /* ── fault clear ─────────────────────────────────────────── */
     if (!strcmp(cmd, "fault clear")) {
+        _adas->override_col_active = 0;
         _adas->collision_warn = 0;
         _adas->hyst_fcw_crit  = 0;
         _adas->hyst_fcw_warn  = 0;

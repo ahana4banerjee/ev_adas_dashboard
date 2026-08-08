@@ -30,6 +30,7 @@ typedef struct {
     float        right_cm;
     float        ttc_sec;
     uint8_t      collision_warn;    /* 0=none 1=warning 2=critical */
+    uint8_t      override_col_active; /* 1 = injected collision override */
     uint8_t      blindspot_left;
     uint8_t      blindspot_right;
     uint8_t      overspeed;
