@@ -4,10 +4,9 @@
  */
 
 #include "dtc_manager.h"
+#include "dal_uart.h"
 #include <string.h>
 #include <stdio.h>
-
-extern UART_HandleTypeDef huart1;
 
 /* ─── Private Variables ──────────────────────────────────────────────────── */
 static DTC_Record_t dtc_records[DTC_MAX_RECORDS];
@@ -103,14 +102,11 @@ void DTC_ClearAll(void)
 void DTC_PrintAll(void)
 {
     char buf[120];
-    int len;
 
-    len = sprintf(buf, "===== DIAGNOSTIC TROUBLE CODES (DTC) =====\r\n");
-    HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
+    DAL_UART_TransmitString("===== DIAGNOSTIC TROUBLE CODES (DTC) =====\r\n");
 
     if (dtc_count == 0) {
-        len = sprintf(buf, "No stored DTC fault records. System clean.\r\n");
-        HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
+        DAL_UART_TransmitString("No stored DTC fault records. System clean.\r\n");
     } else {
         for (uint32_t i = 0; i < dtc_count; i++) {
             int spd  = (int)dtc_records[i].speed_kmh;
@@ -123,23 +119,22 @@ void DTC_PrintAll(void)
             if (socd < 0) socd = -socd;
             if (tmpd < 0) tmpd = -tmpd;
 
-            len = sprintf(buf, "[DTC #%u] %s (0x%04X) | %s | %lums\r\n",
-                          (unsigned int)(i + 1),
-                          DTC_CodeToString(dtc_records[i].dtc_code),
-                          dtc_records[i].dtc_code,
-                          dtc_records[i].active ? "ACTIVE" : "HISTORY",
-                          (unsigned long)dtc_records[i].timestamp);
-            HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
+            sprintf(buf, "[DTC #%u] %s (0x%04X) | %s | %lums\r\n",
+                    (unsigned int)(i + 1),
+                    DTC_CodeToString(dtc_records[i].dtc_code),
+                    dtc_records[i].dtc_code,
+                    dtc_records[i].active ? "ACTIVE" : "HISTORY",
+                    (unsigned long)dtc_records[i].timestamp);
+            DAL_UART_TransmitString(buf);
 
-            len = sprintf(buf, "  FreezeFrame: Speed=%d.%d km/h, SOC=%d.%d%%, Temp=%d.%d C\r\n",
-                          spd, spdd, soc, socd, tmp, tmpd);
-            HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
+            sprintf(buf, "  FreezeFrame: Speed=%d.%d km/h, SOC=%d.%d%%, Temp=%d.%d C\r\n",
+                    spd, spdd, soc, socd, tmp, tmpd);
+            DAL_UART_TransmitString(buf);
 
-            len = sprintf(buf, "  Detail: %s\r\n", dtc_records[i].description);
-            HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
+            sprintf(buf, "  Detail: %s\r\n", dtc_records[i].description);
+            DAL_UART_TransmitString(buf);
         }
     }
 
-    len = sprintf(buf, "==========================================\r\n");
-    HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, 100);
+    DAL_UART_TransmitString("==========================================\r\n");
 }

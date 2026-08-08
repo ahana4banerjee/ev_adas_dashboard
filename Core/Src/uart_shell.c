@@ -3,6 +3,7 @@
 #include "ultrasonic.h"
 #include "crc16.h"
 #include "dtc_manager.h"
+#include "dal_uart.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -40,7 +41,7 @@ static uint8_t rb_pop(uint8_t *b)
 /* ── Internal: transmit string ───────────────────────────────── */
 static void shell_tx(const char *s)
 {
-    HAL_UART_Transmit(_huart, (uint8_t*)s, strlen(s), 200);
+    DAL_UART_TransmitString(s);
 }
 
 /* ── Internal: print full system status ─────────────────────── */
@@ -343,7 +344,7 @@ void Shell_Process(void)
                 _cmd_idx = 0;
             } else {
                 /* Human Interactive Mode: Echo char back */
-                HAL_UART_Transmit(_huart, &byte, 1, 10);
+                DAL_UART_Transmit(&byte, 1);
 
                 if (byte == '\r' || byte == '\n') {
                     if (_cmd_idx > 0) {

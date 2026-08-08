@@ -4,11 +4,9 @@
  */
 
 #include "event_manager.h"
+#include "dal_uart.h"
 #include <string.h>
 #include <stdio.h>
-
-/* Handle to USART hardware configuration defined in main.c */
-extern UART_HandleTypeDef huart1;
 
 /* ─── Private Definitions & Variables ────────────────────────────────────── */
 #define EVENT_QUEUE_SIZE 16
@@ -79,15 +77,13 @@ void EventManager_ProcessQueue(void)
     Event_t ev;
     char buffer[160];
     while (EventManager_Dequeue(&ev)) {
-        int len = sprintf(buffer, "[EVENT] %lu,%s,%s,%s,%s\r\n",
-                          (unsigned long)ev.timestamp,
-                          EventSeverity_ToString(ev.severity),
-                          EventSource_ToString(ev.source),
-                          EventType_ToString(ev.type),
-                          ev.description);
-        if (len > 0) {
-            HAL_UART_Transmit(&huart1, (uint8_t*)buffer, len, 100);
-        }
+        sprintf(buffer, "[EVENT] %lu,%s,%s,%s,%s\r\n",
+                (unsigned long)ev.timestamp,
+                EventSeverity_ToString(ev.severity),
+                EventSource_ToString(ev.source),
+                EventType_ToString(ev.type),
+                ev.description);
+        DAL_UART_TransmitString(buffer);
     }
 }
 
