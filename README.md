@@ -449,8 +449,3 @@ Version 3 will evolve this single-ECU system into a **distributed multi-node aut
 * **Network & Serialization Protocols**: 48-byte packed binary C struct design, SLIP framing, byte-escaping, and CRC-16 error detection.
 * **Full-Stack Telemetry & NOC Tooling**: High-rate serial streaming, Python FastAPI gateways, SQLite WAL databases, WebSocket multiplexing, and modern React 19 dashboards.
 
----
-
-## License & Acknowledgements
-
-Developed as part of the Advanced Automotive Embedded Systems Platform series. Open-source under the MIT License. Embedded simulation running on [PICSimLab](https://lcgamboa.github.io/picsimlab/).
