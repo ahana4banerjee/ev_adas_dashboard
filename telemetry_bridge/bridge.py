@@ -15,8 +15,9 @@ if __name__ == "__main__":
     os.environ["BRIDGE_DEMO"] = "1" if args.demo or not args.port else "0"
 
     port_web = int(os.environ.get("PORT", 8080))
-    print(f"Starting EV ADAS Telemetry Bridge on web port {port_web}...")
+    host_web = os.environ.get("HOST", "0.0.0.0")
+    print(f"Starting EV ADAS Telemetry Bridge on {host_web}:{port_web}...")
     print(f"Serial Configuration: Port={args.port}, Baud={args.baud}, Demo={args.demo or not args.port}")
     
     # Run the Uvicorn application
-    uvicorn.run("app.uvicorn_server:app", host="127.0.0.1", port=port_web, log_level="info")
+    uvicorn.run("app.uvicorn_server:app", host=host_web, port=port_web, log_level="info")

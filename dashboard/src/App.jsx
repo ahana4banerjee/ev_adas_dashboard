@@ -91,11 +91,17 @@ function App() {
 
   // Establish WebSocket connection to backend daemon
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:8080/ws')
+    const defaultHost = 'localhost:8080'
+    const backendHost = import.meta.env.VITE_BACKEND_HOST || defaultHost
+    const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+    const defaultWsUrl = `${isHttps ? 'wss:' : 'ws:'}//${backendHost}/ws`
+    const wsTarget = import.meta.env.VITE_WS_URL || defaultWsUrl
+
+    const socket = new WebSocket(wsTarget)
 
     socket.onopen = () => {
       setConnectionStatus('CONNECTED')
-      setTerminalLogs(prev => [...prev, '[BRIDGE] Telemetry socket bridge connection established.'])
+      setTerminalLogs(prev => [...prev, `[BRIDGE] Telemetry socket bridge connected (${wsTarget}).`])
     }
 
     socket.onclose = () => {
@@ -157,7 +163,12 @@ function App() {
   // Fetch recorded sessions when swapping to replay view
   useEffect(() => {
     if (activeView === 'replay') {
-      fetch('http://localhost:8080/sessions')
+      const defaultHost = 'localhost:8080'
+      const backendHost = import.meta.env.VITE_BACKEND_HOST || defaultHost
+      const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+      const apiBase = import.meta.env.VITE_API_URL || `${isHttps ? 'https:' : 'http:'}//${backendHost}`
+
+      fetch(`${apiBase}/sessions`)
         .then(res => res.json())
         .then(data => {
           setSessions(data)
@@ -217,7 +228,11 @@ function App() {
 
   const handleExportCSV = () => {
     if (!selectedSessionId) return
-    window.open(`http://localhost:8080/sessions/${selectedSessionId}/export`, '_blank')
+    const defaultHost = 'localhost:8080'
+    const backendHost = import.meta.env.VITE_BACKEND_HOST || defaultHost
+    const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+    const apiBase = import.meta.env.VITE_API_URL || `${isHttps ? 'https:' : 'http:'}//${backendHost}`
+    window.open(`${apiBase}/sessions/${selectedSessionId}/export`, '_blank')
   }
 
   const handleApplyLimits = () => {
