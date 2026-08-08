@@ -176,6 +176,12 @@ static void process_cmd(char *cmd)
 
     /* ── fault clear ─────────────────────────────────────────── */
     if (!strcmp(cmd, "fault clear")) {
+        _adas->collision_warn = 0;
+        _adas->hyst_fcw_crit  = 0;
+        _adas->hyst_fcw_warn  = 0;
+        _adas->blindspot_left = 0;
+        _adas->blindspot_right = 0;
+        _adas->alarm_priority = ALARM_NONE;
         Fault_Clear(_flt, _ev);
         shell_tx("Faults cleared. State: PARKED\r\n> ");
         return;

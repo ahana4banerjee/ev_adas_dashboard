@@ -136,7 +136,8 @@ static void Start_Buzzer_PWM(void)
 
 static void Stop_Buzzer_PWM(void)
 {
-    if (_is_pwm_active && _htim) {
+    if (_htim) {
+        __HAL_TIM_SET_COMPARE(_htim, _channel, 0);
         HAL_TIM_PWM_Stop(_htim, _channel);
         if (_htim->Instance == TIM1) {
             __HAL_TIM_MOE_DISABLE(_htim); /* Required for TIM1 Advanced Timer */

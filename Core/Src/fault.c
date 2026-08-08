@@ -2,6 +2,7 @@
 #include "ultrasonic.h"
 #include "alarm_manager.h"
 #include "event_manager.h"
+#include "buzzer.h"
 
 extern TIM_HandleTypeDef htim1;
 
@@ -66,7 +67,8 @@ void Fault_Clear(Fault_HandleTypeDef *flt, EV_HandleTypeDef *ev)
 
     ev->state = STATE_PARKED;
     
-    AlarmManager_ClearAlert(ALERT_FAULT);
+    AlarmManager_Init();
+    Buzzer_Stop();
     EventManager_Publish(EVENT_FAULT_CLEARED, EVENT_SEVERITY_INFO, EVENT_SOURCE_FAULT, "All active faults cleared");
 
     /* Reset EV to safe state */
