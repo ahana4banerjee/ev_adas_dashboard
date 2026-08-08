@@ -143,6 +143,7 @@ def export_session_csv(session_id: int):
     return StreamingResponse(output, media_type="text/csv", headers=headers)
 
 @app.websocket("/ws")
+@app.websocket("/wss")
 async def websocket_endpoint(websocket: WebSocket):
     await ws_manager.connect(websocket)
     replay_engine = None
