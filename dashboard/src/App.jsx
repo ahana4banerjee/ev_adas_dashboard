@@ -14,22 +14,22 @@ function App() {
   
   // Real-time parsed vehicle metrics (default mock values for layout display)
   const [metrics, setMetrics] = useState({
-    speed: 72.5,
-    soc: 79.3,
-    torque: 75,
-    temp: 27.1,
-    range: 260,
-    accel: 50,
+    speed: 0.0,
+    soc: 80.0,
+    torque: 0,
+    temp: 25.0,
+    range: 280,
+    accel: 0,
     brake: 0,
-    frontDist: 40,
+    frontDist: 400,
     leftDist: 400,
     rightDist: 400,
-    ttc: 2.1,
-    collisionWarn: 1, // 0=None, 1=Warn, 2=Crit
+    ttc: 99.9,
+    collisionWarn: 0, // 0=None, 1=Warn, 2=Crit
     bsdLeft: 0,
     bsdRight: 0,
-    alarmLevel: 2, // 0=None, 1=Advisory, 2=Warning, 3=Critical
-    faultFlags: 0x04, // 0x01=OT, 0x02=SOC, 0x04=COL
+    alarmLevel: 0, // 0=None, 1=Advisory, 2=Warning, 3=Critical
+    faultFlags: 0x00, // 0x00=Clean
     driveMode: 'NORMAL'
   })
 
@@ -72,6 +72,9 @@ function App() {
     ttcWarn: 3.0,
     ttcCrit: 1.5
   })
+
+  // Diagnostic Trouble Codes (DTC) parsed records
+  const [dtcRecords, setDtcRecords] = useState([])
 
   const terminalEndRef = useRef(null)
 
@@ -133,6 +136,7 @@ function App() {
           setTerminalLogs(prev => [...prev, `[ACK] Command "${msg.data.command}" success: ${msg.data.success}`])
         } else if (msg.event === 'cli_log') {
           setTerminalLogs(prev => [...prev, msg.data])
+          parseDtcLogLine(msg.data)
         }
       } catch (err) {
         console.error('Error parsing packet data:', err)
@@ -236,19 +240,154 @@ function App() {
     }
   }
 
+  // Helper to parse incoming DTC lines from microcontroller / bridge
+  const parseDtcLogLine = (line) => {
+    if (!line) return
+
+    if (line.includes('No stored DTC') || line.includes('All DTC records cleared')) {
+      setDtcRecords([])
+      return
+    }
+
+    const headerMatch = line.match(/\[DTC\s*#?(\d+)\]\s*([A-Z0-9]+)\s*\((0x[0-9A-Fa-f]+)\)\s*\|\s*([A-Z]+)\s*\|\s*(\d+ms|\d+)/i) ||
+                        line.match(/\[(\d+)\]\s*Code:\s*([A-Z0-9]+)\s*\((0x[0-9A-Fa-f]+)\)\s*\|\s*State:\s*([A-Z]+)\s*\|\s*Time:\s*(\d+ms|\d+)/i)
+    if (headerMatch) {
+      const id = parseInt(headerMatch[1])
+      const code = headerMatch[2]
+      const hex = headerMatch[3]
+      const state = headerMatch[4]
+      const time = headerMatch[5]
+
+      setDtcRecords(prev => {
+        const filtered = prev.filter(r => r.id !== id && r.code !== code)
+        return [...filtered, {
+          id,
+          code,
+          hex,
+          state,
+          time: time.endsWith('ms') ? time : `${time}ms`,
+          speed: '--',
+          soc: '--',
+          temp: '--',
+          desc: 'Diagnostic trouble event'
+        }]
+      })
+      return
+    }
+
+    const snapMatch = line.match(/FreezeFrame:\s*Speed=([^,]+),\s*SOC=([^,]+),\s*Temp=([^\s\r\n]+)/i) ||
+                      line.match(/FreezeFrame:\s*Spd=([^,]+),\s*SOC=([^,]+),\s*Temp=([^\s\r\n]+)/i)
+    if (snapMatch) {
+      setDtcRecords(prev => {
+        if (prev.length === 0) return prev
+        const last = { ...prev[prev.length - 1] }
+        last.speed = snapMatch[1].trim()
+        last.soc = snapMatch[2].trim()
+        last.temp = snapMatch[3].trim()
+        return [...prev.slice(0, -1), last]
+      })
+      return
+    }
+
+    const descMatch = line.match(/Detail:\s*(.+)/i) || line.match(/Desc:\s*(.+)/i)
+    if (descMatch) {
+      setDtcRecords(prev => {
+        if (prev.length === 0) return prev
+        const last = { ...prev[prev.length - 1] }
+        last.desc = descMatch[1].trim()
+        return [...prev.slice(0, -1), last]
+      })
+      return
+    }
+  }
+
   const handleInjectFault = (type) => {
+    // 1. Optimistic immediate state update
+    if (type === 'motor') {
+      setMetrics(prev => ({ ...prev, temp: 95.0, faultFlags: (prev.faultFlags | 0x01), alarmLevel: 3 }))
+      setDtcRecords(prev => {
+        const filtered = prev.filter(r => r.code !== 'P0A80')
+        return [...filtered, {
+          id: filtered.length + 1,
+          code: 'P0A80',
+          hex: '0x0A80',
+          state: 'ACTIVE',
+          time: '10ms',
+          speed: `${metrics.speed.toFixed(1)} km/h`,
+          soc: `${metrics.soc.toFixed(1)}%`,
+          temp: '95.0 °C',
+          desc: 'Motor temperature limit exceeded'
+        }]
+      })
+    } else if (type === 'soc') {
+      setMetrics(prev => ({ ...prev, soc: 1.0, faultFlags: (prev.faultFlags | 0x02), alarmLevel: 3 }))
+      setDtcRecords(prev => {
+        const filtered = prev.filter(r => r.code !== 'P0210')
+        return [...filtered, {
+          id: filtered.length + 1,
+          code: 'P0210',
+          hex: '0x0210',
+          state: 'ACTIVE',
+          time: '10ms',
+          speed: `${metrics.speed.toFixed(1)} km/h`,
+          soc: '1.0%',
+          temp: `${metrics.temp.toFixed(1)} °C`,
+          desc: 'Battery state of charge critically low'
+        }]
+      })
+    } else if (type === 'col') {
+      setMetrics(prev => ({ ...prev, collisionWarn: 2, frontDist: 15, faultFlags: (prev.faultFlags | 0x04), alarmLevel: 3 }))
+      setDtcRecords(prev => {
+        const filtered = prev.filter(r => r.code !== 'C1C00')
+        return [...filtered, {
+          id: filtered.length + 1,
+          code: 'C1C00',
+          hex: '0x1C00',
+          state: 'ACTIVE',
+          time: '10ms',
+          speed: `${metrics.speed.toFixed(1)} km/h`,
+          soc: `${metrics.soc.toFixed(1)}%`,
+          temp: `${metrics.temp.toFixed(1)} °C`,
+          desc: 'Critical front collision hazard'
+        }]
+      })
+    }
+
+    // 2. Dispatch command to backend bridge and MCU
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ event: 'cli_command', data: `fault inject ${type}` }))
       setTerminalLogs(prev => [...prev, `[FAULT] Triggered virtual override: ${type.toUpperCase()}`])
+      setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ event: 'cli_command', data: 'dtc read' }))
+        }
+      }, 250)
     } else {
       setTerminalLogs(prev => [...prev, '[FAULT] Injection failed: Serial bridge link offline.'])
     }
   }
 
   const handleClearFaults = () => {
+    // Optimistically reset UI state to safe nominal
+    setMetrics(prev => ({
+      ...prev,
+      temp: 25.0,
+      soc: 80.0,
+      collisionWarn: 0,
+      frontDist: 400,
+      faultFlags: 0x00,
+      alarmLevel: 0
+    }))
+    setDtcRecords([])
+
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ event: 'cli_command', data: 'fault clear' }))
       setTerminalLogs(prev => [...prev, '[FAULT] Cleared fault registers. Controller returning to NORMAL.'])
+      setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ event: 'cli_command', data: 'dtc read' }))
+        }
+      }, 250)
     } else {
       setTerminalLogs(prev => [...prev, '[FAULT] Reset failed: Serial bridge link offline.'])
     }
@@ -264,6 +403,7 @@ function App() {
   }
 
   const handleClearDTCs = () => {
+    setDtcRecords([])
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ event: 'cli_command', data: 'dtc clear' }))
       setTerminalLogs(prev => [...prev, '[DTC] Cleared stored Diagnostic Trouble Codes.'])
@@ -783,22 +923,32 @@ function App() {
 
       {/* 4. Packet Inspector / CLI Console View */}
       {activeView === 'inspector' && (
-        <div className="bg-card border border-border rounded-xl p-6 w-full max-w-4xl mx-auto flex flex-col gap-6">
-          <div>
-            <h2 className="text-lg font-mono font-bold text-white mb-2 uppercase tracking-wider">Serial Link Packet Inspector</h2>
-            <p className="text-xs text-muted">Inspect raw framed streams on the virtual UART interface in real time.</p>
+        <div className="bg-card border border-border rounded-xl p-6 w-full max-w-7xl mx-auto flex flex-col gap-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+            <div>
+              <h2 className="text-lg font-mono font-bold text-white mb-1 uppercase tracking-wider">Serial Link & Diagnostic Inspector</h2>
+              <p className="text-xs text-muted">Real-time UART frame telemetry, interactive diagnostic console, and DTC freeze-frame memory.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono bg-background border border-border px-3 py-1 rounded text-primary">
+                DTCs: {dtcRecords.length} RECORDED
+              </span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Console Log */}
-            <div className="lg:col-span-2 flex flex-col gap-2">
-              <label className="block text-[10px] font-mono text-muted uppercase">Raw Packet Log Console</label>
-              <div className="bg-background border border-border rounded-lg p-4 font-mono text-xs h-80 overflow-y-auto flex flex-col gap-1 text-secondary">
+            {/* Column 1: Raw Framed Telemetry Stream */}
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <label className="block text-[10px] font-mono text-muted uppercase">1. Raw Telemetry Stream</label>
+                <span className="text-[9px] font-mono text-gray-400">{messages.length} pkts</span>
+              </div>
+              <div className="bg-background border border-border rounded-lg p-3 font-mono text-[11px] h-96 overflow-y-auto flex flex-col gap-1 text-secondary">
                 {messages.length === 0 ? (
-                  <div className="text-muted text-center py-20 uppercase tracking-widest text-[10px]">No packets incoming. Connect uvicorn_server.</div>
+                  <div className="text-muted text-center py-28 uppercase tracking-widest text-[10px]">No packets incoming. Connect uvicorn_server.</div>
                 ) : (
                   messages.map((m, idx) => (
-                    <div key={idx} className="border-b border-border/10 py-1 font-mono text-left">
+                    <div key={idx} className="border-b border-border/10 py-1 font-mono text-left break-all">
                       {m}
                     </div>
                   ))
@@ -806,21 +956,26 @@ function App() {
               </div>
             </div>
 
-            {/* Diagnostic CLI Shell */}
+            {/* Column 2: Diagnostic CLI Shell */}
             <div className="flex flex-col gap-2">
-              <label className="block text-[10px] font-mono text-muted uppercase">Diagnostic CLI Shell</label>
-              <div className="bg-background border border-border rounded-lg p-4 font-mono text-xs h-80 flex flex-col justify-between">
-                <div className="h-[210px] overflow-y-auto flex flex-col gap-1 text-left text-gray-300 min-h-0">
+              <div className="flex justify-between items-center">
+                <label className="block text-[10px] font-mono text-muted uppercase">2. Diagnostic CLI Shell</label>
+                <span className="text-[9px] font-mono text-emerald-400">ONLINE</span>
+              </div>
+              <div className="bg-background border border-border rounded-lg p-3 font-mono text-xs h-96 flex flex-col justify-between">
+                <div className="h-[300px] overflow-y-auto flex flex-col gap-1 text-left text-gray-300 min-h-0">
                   {terminalLogs.map((log, idx) => (
-                    <div key={idx} className="leading-relaxed">{log}</div>
+                    <div key={idx} className={`leading-relaxed ${log.startsWith('[EVENT]') ? 'text-warning font-semibold' : log.startsWith('[DTC]') || log.startsWith('=====') ? 'text-secondary font-bold' : log.startsWith('>') ? 'text-primary' : 'text-gray-300'}`}>
+                      {log}
+                    </div>
                   ))}
                   <div ref={terminalEndRef} />
                 </div>
                 
-                <div className="flex gap-1.5 mt-2">
+                <div className="flex gap-1.5 mt-2 pt-2 border-t border-border/40">
                   <input
                     type="text"
-                    placeholder="Enter shell command..."
+                    placeholder="Enter command (e.g. dtc read, status)..."
                     value={terminalInput}
                     onChange={(e) => setTerminalInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && executeCommand(terminalInput)}
@@ -828,11 +983,84 @@ function App() {
                   />
                   <button 
                     onClick={() => executeCommand(terminalInput)}
-                    className="bg-primary/20 border border-primary/30 text-primary px-3 rounded hover:bg-primary/30 transition-colors"
+                    className="bg-primary/20 border border-primary/30 text-primary px-3 rounded hover:bg-primary/30 transition-colors text-xs font-mono font-bold cursor-pointer"
                   >
                     Send
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Column 3: Diagnostic Trouble Codes (DTC) Registry */}
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <label className="block text-[10px] font-mono text-muted uppercase">3. DTC Trouble Codes & Freeze Frames</label>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={handleReadDTCs}
+                    className="bg-secondary/20 hover:bg-secondary/30 text-secondary border border-secondary/40 text-[9px] font-mono font-bold px-2 py-0.5 rounded cursor-pointer transition-all"
+                  >
+                    Query
+                  </button>
+                  <button
+                    onClick={handleClearDTCs}
+                    className="bg-card hover:bg-border/40 text-gray-400 border border-border text-[9px] font-mono font-bold px-2 py-0.5 rounded cursor-pointer transition-all"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="bg-background border border-border rounded-lg p-3 font-mono text-xs h-96 overflow-y-auto flex flex-col gap-2.5">
+                {dtcRecords.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                    <ShieldCheck size={36} className="text-primary/60 mb-2" />
+                    <div className="text-xs font-bold text-gray-300 uppercase tracking-wider">No Stored DTCs</div>
+                    <div className="text-[10px] text-muted mt-1 max-w-[200px]">All ECU systems nominal. Click "Query" or run "dtc read" to refresh.</div>
+                  </div>
+                ) : (
+                  dtcRecords.map((rec, idx) => (
+                    <div key={idx} className="bg-card border border-border rounded-lg p-3 flex flex-col gap-2 shadow-sm text-left">
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-extrabold text-danger bg-danger/15 border border-danger/30 px-2 py-0.5 rounded">
+                            {rec.code}
+                          </span>
+                          <span className="text-[10px] text-gray-400 font-mono">({rec.hex})</span>
+                        </div>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                          rec.state === 'ACTIVE' 
+                            ? 'bg-danger/20 text-danger border border-danger/40 animate-pulse' 
+                            : 'bg-muted/20 text-gray-400'
+                        }`}>
+                          {rec.state}
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] text-white font-medium">{rec.desc}</div>
+
+                      {/* Freeze Frame Snapshot Grid */}
+                      <div className="grid grid-cols-3 gap-1.5 bg-background/60 border border-border/50 rounded p-2 text-center mt-1">
+                        <div>
+                          <div className="text-[8px] text-muted uppercase">Speed</div>
+                          <div className="text-[11px] font-bold text-emerald-400">{rec.speed}</div>
+                        </div>
+                        <div>
+                          <div className="text-[8px] text-muted uppercase">SOC</div>
+                          <div className="text-[11px] font-bold text-primary">{rec.soc}</div>
+                        </div>
+                        <div>
+                          <div className="text-[8px] text-muted uppercase">Temp</div>
+                          <div className="text-[11px] font-bold text-warning">{rec.temp}</div>
+                        </div>
+                      </div>
+
+                      <div className="text-[9px] text-muted flex justify-between items-center border-t border-border/30 pt-1.5 mt-0.5">
+                        <span>Timestamp:</span>
+                        <span className="text-gray-300">{rec.time}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
